@@ -1,0 +1,1451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>DFCV 参数可视化调配v1.0</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- 外部资源引入 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bgd: '#FFFFFF',
+            panel: '#F8F9FA',
+            neonCyan: '#32E6E2',
+            neonPink: '#FF3D81',
+            neonPurple: '#7F5AF0',
+            neonLime: '#2CB67D',
+            neonYellow: '#F5D300',
+            neonOrange: '#FF7A00',
+            ink: '#333333',
+            dfcvRed: '#D92121'
+          },
+          fontFamily: {
+            sans: ['Inter','system-ui','-apple-system','Segoe UI','Roboto','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','sans-serif'],
+            mono: ['JetBrains Mono','ui-monospace','SFMono-Regular','Menlo','Consolas','monospace']
+          },
+          boxShadow: {
+            neon: '0 0 12px rgba(127,90,240,.2), 0 0 24px rgba(50,230,226,.1)',
+            cyan: '0 0 12px rgba(50,230,226,.3), 0 0 24px rgba(50,230,226,.15)',
+            pink: '0 0 12px rgba(255,61,129,.3), 0 0 24px rgba(255,61,129,.15)'
+          }
+        }
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .glass { @apply bg-panel/90 backdrop-blur-sm border border-gray-200; }
+      .card { @apply glass rounded-2xl p-4 md:p-6 shadow-neon transition-all duration-300 hover:-translate-y-1; }
+      .title { @apply text-2xl md:text-4xl font-extrabold tracking-tight leading-tight text-ink; }
+      .subtitle { @apply text-sm md:text-base text-ink/70; }
+      .kpi { @apply glass rounded-xl p-4 text-center; }
+      .kpi-num { @apply text-xl md:text-2xl font-extrabold text-neonCyan; }
+      .badge { @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs md:text-sm font-semibold bg-gray-100 border border-gray-200 text-ink; }
+      .neon-text { text-shadow: 0 0 8px rgba(127,90,240,.2), 0 0 18px rgba(50,230,226,.1); }
+      .glow-cyan { box-shadow: 0 0 12px rgba(50,230,226,.3), 0 0 24px rgba(50,230,226,.15); }
+      .glow-pink { box-shadow: 0 0 12px rgba(255,61,129,.3), 0 0 24px rgba(255,61,129,.15); }
+      .btn { @apply relative inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 rounded-xl font-semibold text-ink bg-gray-100 border border-gray-200; }
+      .btn:hover { @apply -translate-y-0.5 bg-gray-200; }
+      .config-card { @apply glass rounded-xl p-4 transition-all duration-300 hover:-translate-y-1 cursor-pointer border-gray-200 hover:border-neonPurple; }
+  .config-card.active { @apply border-neonPurple glow-cyan; }
+  .config-input { @apply w-full bg-transparent border-b border-gray-300 focus:border-neonPurple focus:outline-none text-sm font-semibold; }
+
+      .scanline::after{
+        content:""; position: fixed; left:0; right:0; top:-50%;
+        height:200%; pointer-events:none;
+        background: repeating-linear-gradient( to bottom, rgba(0,0,0,.01), rgba(0,0,0,.01) 1px, transparent 2px, transparent 4px);
+        mix-blend-mode: overlay; animation: scan 14s linear infinite;
+      }
+      @keyframes scan { 0%{ transform: translateY(-10%);} 100%{ transform: translateY(10%);} }
+      .grid-bg{
+        background-color: #FFFFFF;
+        position: relative;
+        overflow: hidden;
+        padding-top: 60px !important;
+        padding-bottom: 40px !important;
+      }
+      .grid-bg::before, .grid-bg::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        width: 0;
+        height: 0;
+        border-bottom: 15vh solid rgba(255, 0, 0, 0.2) !important;
+        z-index: 0;
+      }
+      .grid-bg::before {
+        left: 0;
+        border-right: 20vh solid transparent;
+      }
+      .grid-bg::after {
+        right: 0;
+        border-left: 20vh solid transparent;
+      }
+      .panel-title { @apply text-xl md:text-2xl font-bold text-ink; }
+      .mono { @apply font-mono text-[12px] md:text-[13px] text-ink/80; }
+      .tbl { @apply w-full text-xs md:text-sm border-separate border-spacing-y-2; }
+      .tbl thead th { @apply text-left text-ink/70 font-semibold; }
+      .tbl tbody tr { @apply bg-gray-50 rounded-xl; }
+      .tbl td, .tbl th { @apply px-3 py-2; }
+      .range { @apply w-full h-2 rounded-full bg-gray-200 outline-none; }
+      .input-number { @apply w-16 px-1 border border-gray-300 rounded text-right text-sm; }
+      ::-webkit-scrollbar { @apply w-2 h-2; }
+      ::-webkit-scrollbar-track { @apply bg-gray-100 rounded-full; }
+      ::-webkit-scrollbar-thumb { @apply bg-gray-300 rounded-full hover:bg-gray-400; }
+    }
+    /* 密码验证弹窗样式 */
+#passwordModal {
+  backdrop-filter: blur(8px);
+}
+/* 确保验证前内容不可见 */
+.main-wrapper, .fixed-param-sidebar, .footer-section {
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0s, opacity 0.5s ease;
+}
+/* 验证通过后显示内容 */
+.content-unlocked .main-wrapper, 
+.content-unlocked .fixed-param-sidebar, 
+.content-unlocked .footer-section {
+  visibility: visible;
+  opacity: 1;
+}
+  </style>
+  <style>
+    /* 核心：logo固定在左上角的样式 */
+    .dfcv-logo-fixed {
+      position: absolute;/*absolute时可随滚动条滚动，fixed则常驻页面左上角不随滚动条运动*/
+      top: -80px; /* 距离页面顶部 */
+      left: 0; /* 距离页面左侧 */
+      z-index: 9999; /* 层级置顶：防止被其他内容遮挡 */
+      width: 200px; 
+      height: 200px;
+      object-fit: contain;/* 保持图片比例，不拉伸变形 */
+    }
+
+    /* 选项卡粘性定位：不跟随滚动条滚动 */
+    .tab-sticky-wrapper {
+      position: sticky; /* 核心属性：粘性定位，固定在容器顶部 */
+      top: 0; /* 固定在滚动容器的顶部（关键，不设置则无法生效） */
+      background-color: #FFFFFF; /* 背景色，覆盖下方滚动的内容，避免重叠透明 */
+      z-index: 10; /* 提高层级，确保选项卡在最上层，不被图表遮挡 */
+      padding-bottom: 0px; /* 底部间距*/
+      margin-bottom: -4px; /* 抵消部分间距，保持与原有布局一致 */
+    }
+    /* 选项卡样式 */
+    .tab-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .tab-btn.active {
+      color: #7F5AF0;
+      border-bottom: 2px solid #7F5AF0;
+      font-weight: 600;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.5);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-content {
+      background-color: white;
+      padding: 2rem;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.2);
+      text-align: center;
+      border: 2px solid red;
+    }
+    .modal-content h3 {
+      color: red;
+      margin: 0 0 1rem 0;
+      font-size: 1.2rem;
+    }
+    .modal-content button {
+      background-color: red;
+      color: white;
+      border: none;
+      padding: 0.5rem 1.5rem;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 1rem;
+    }
+    .chart-container {
+      position: relative;
+      height: 280px !important;
+      width: 100%;
+    }
+    .chart-container1 {
+      position: relative;
+      height: 500px !important;
+      width: 100%;
+    }
+    .main-wrapper {
+      max-width: 1920px;
+      margin: 0 auto;
+      padding: 1rem 2rem 3rem !important;
+      position: relative;
+      z-index: 1;
+      height: auto !important;
+    }
+    .content-container {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 1rem;
+      padding-bottom: 2rem;
+      height: auto !important;
+    }
+    .chart-section {
+      flex: 1;
+      min-width: unset !important; /* 移除固定最小宽度限制 */
+      width: 100%; /* 占满父容器宽度 */
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      max-height: none !important;
+      overflow-y: auto;
+      padding-right: 10px;
+      box-sizing: border-box; /* 确保内边距不超出宽度 */
+    }
+    /* 让主内容区留出右侧空间，避免被参数栏遮挡 */
+    .main-content-with-sidebar {
+      margin-right: 340px;
+      width: calc(100% - 340px); /* 核心：自动计算剩余宽度 */
+      box-sizing: border-box;
+      transition: all 0.3s ease; /* 优化过渡效果 */
+    }
+    .fixed-param-sidebar {
+        position: fixed !important;
+        right: 0;
+        top: 0;
+        width: 340px;
+        height: 100vh;
+        background-color: #FFFFFF;
+        border-left: 1px solid #e5e7eb;
+        box-shadow: -10px 0 30px rgba(0,0,0,0.08);
+        z-index: 9999;
+        overflow-y: auto;
+        padding: 24px 20px;
+        font-size: 13px;
+    }
+    /* 滚动条美化 */
+    .fixed-param-sidebar::-webkit-scrollbar { width: 6px; }
+    .fixed-param-sidebar::-webkit-scrollbar-track { background: transparent; }
+    .fixed-param-sidebar::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+    .fixed-param-sidebar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+    .visualization-scroll {
+      max-height: 600px;
+      overflow-y: auto;
+      padding-right: 10px;
+      box-sizing: border-box;
+    }
+    .dfcv-title {
+      color: #D92121;
+      font-size: 2.4rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem !important;
+      font-family: 'Inter','system-ui','-apple-system','Segoe UI','Roboto','PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','sans-serif';
+      position: relative;
+      z-index: 10;
+      text-align: center;
+    }
+    .footer-section {
+      max-width: calc(100% - 360px); /* 适配右侧参数栏 */
+      width: 100%; /* 自动占满剩余宽度 */
+      margin-left: auto; /* 居中对齐 */
+      margin-right: auto;
+      backdrop-filter: blur(12px);
+      border-radius: 24px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 
+        0 20px 40px rgba(0,0,0,0.08),
+        0 0 0 1px rgba(255,255,255,0.5) inset;
+      text-align: center;
+      font-family: 'Inter', system-ui, sans-serif;
+      padding: 0 20px; /* 增加内边距防止内容溢出 */
+      box-sizing: border-box;
+    }
+    .param-content {
+      padding: 10px 0;
+    }
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.8rem;
+      margin: 0.8rem 0;
+      padding: 0.8rem;
+      background-color: rgba(255, 255, 255, 0.6);
+      border-radius: 6px;
+      font-size: 0.8rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .legend-color {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+    .torque-charts-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 自动适配列数 */
+      gap: 1.5rem;
+      margin: 1rem 0;
+    }
+    .motor-charts-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 自动适配列数 */
+      gap: 1.5rem;
+      margin: 1rem 0;
+    }
+    .motor-chart-card {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .motor-chart-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .torque-chart-card {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .torque-chart-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      /*border: 1px solid #ff0000;-------------------------------------之前用于定位图表位置，验证图表UI是否匹配用*/
+    }
+/*=========================vt-chart-container部分为新增======================*/
+    .vt-chart-container {
+      flex: 1;
+      display: flex;
+      height: 350px !important;
+      width: 100%;
+      margin-top: 20px;
+    }
+/*=========================vt-chart-container部分为新增======================*/
+    html {
+      overflow-y: scroll;
+    }
+  </style>
+</head>
+
+<body class="bg-bgd text-ink font-sans grid-bg scanline min-h-screen">
+
+<!-- 密码验证弹窗 -->
+<div id="passwordModal" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-[99999]">
+  <div class="glass rounded-2xl p-8 w-full max-w-md">
+    <h2 class="title text-neonPink text-center mb-6">请输入访问密码</h2>
+    <div class="mb-4">
+      <input 
+        type="password" 
+        id="passwordInput" 
+        class="w-full px-4 py-3 rounded-xl border-2 border-gray-300 text-lg font-mono text-center focus:border-neonPurple focus:outline-none focus:ring-4 focus:ring-neonPurple/20 transition-all"
+        placeholder="请输入密码"
+        autocomplete="off"
+      >
+    </div>
+    <!-- 新增：错误次数提示 -->
+    <p id="attemptsLeft" class="text-yellow-500 text-sm text-center mt-2 hidden">剩余尝试次数：4</p>
+    <!-- 新增：锁定提示 -->
+    <p id="lockoutMessage" class="text-red-500 text-sm text-center mt-2 hidden">密码错误次数过多，请600秒后再试！剩余时间：<span id="countdown">600</span>秒</p>
+    <button 
+      id="verifyPasswordBtn" 
+      class="btn w-full bg-neonPurple text-white hover:bg-neonPurple/90 border-neonPurple"
+    >
+      <i class="fa fa-unlock mr-2"></i>解锁（Enter）
+    </button>
+    <p id="passwordError" class="text-red-500 text-sm text-center mt-4 hidden">密码错误，请重试！</p>
+  </div>
+</div>
+
+  <!-- 错误提示弹窗 -->
+  <div id="errorModal" class="modal">
+    <div class="modal-content">
+      <h3>Error:超出阈值</h3>
+      <p>您输入的数值超出了允许的范围，请重新输入</p>
+      <button onclick="closeModal()">确定</button>
+    </div>
+  </div>
+
+  <!-- 核心：左上角固定logo（直接引用官方URL） -->
+  <img 
+    src="https://www.dfmc.com.cn/images/icon/logo.png" 
+    alt="东风汽车双飞燕logo" 
+    class="dfcv-logo-fixed"
+  >
+  
+  <!-- 主容器 -->
+  <div class="main-wrapper main-content-with-sidebar">
+    <div class="dfcv-title">DFCV电驱系统参数可视化匹配工具v1.0 Beta</div>
+    
+    <!-- 内容容器 -->
+    <div class="content-container">
+      <!-- 左侧：图表区域 -->
+      <div class="chart-section">
+        <div>
+          <h1 class="title mt-1 text-xl md:text-2xl">参数反馈</h1>
+          <p class="subtitle mt-0.5">系统特性实时计算</p>
+        </div>
+
+        <!-- 4个KPI栏 -->
+        <div class="grid grid-cols-4 gap-4 mb-6">
+          <div class="kpi p-4">
+            <!-- 主标题保留原有id，兼容后续JS赋值，内部新增3个换挡点展示 -->
+            <div class="kpi-num text-lg md:text-xl" id="kpiPower">
+              <div id="shiftSpeed1" class="mb-1">—</div>
+              <div id="shiftSpeed2" class="mb-1">—</div>
+              <div id="shiftSpeed3">—</div>
+            </div>
+            <div class="text-xs opacity-70 mt-2">换挡车速 (km/h)</div>
+          </div>
+          <div class="kpi p-4">
+            <div class="kpi-num text-lg md:text-xl" id="kpiVmax">—</div>
+            <div class="text-xs opacity-70 mt-2">最高瞬时车速 (km/h)</div>
+          </div>
+          <div class="kpi p-4">
+            <div class="kpi-num text-lg md:text-xl" id="kpiMotorRPM">—</div>
+            <div class="text-xs opacity-70">最高瞬时车速时的电机转速</div>
+            <div class="text-xs opacity-40">由于计算误差，当该值接近最高转速nmax时，可近似认为是nmax</div>
+          </div>
+          <div class="kpi p-4">
+            <div class="kpi-num text-lg md:text-xl" id="kpiFullTorqueSlip">—</div>
+            <div class="text-xs opacity-70 mt-2">空载满扭矩启动时是否会打滑</div>
+          </div>
+          <div class="kpi p-4">
+            <div class="kpi-num text-lg md:text-xl" id="kpiAcceleration">
+              <div class="flex items-center justify-center gap-1">
+                <input type="number" id="targetSpeedInput" placeholder="目标车速" min="0" max="200" class="input-number w-24 text-center" value="100">
+                <span class="text-ink/70">km/h 估用</span>
+                <span id="accelerationTime" class="text-neonPink font-bold">—</span>
+                <span class="text-ink/70">s</span>
+              </div>
+            </div>
+            <div class="text-xs opacity-70 mt-2">未计入换挡时间，请结合换挡车速自行增加，时间过长会不显示</div>
+          </div>
+        </div>
+        <div class="flex border-b border-gray-200">
+              <button class="tab-btn active px-4 py-2 font-semibold text-ink/70 border-b-2 border-neonPurple" data-tab="visualization">
+                <i class="fa fa-line-chart mr-1">/</i>可视化
+              </button>
+              <button class="tab-btn px-4 py-2 font-semibold text-ink/70" data-tab="params">
+                <i class="fa fa-book mr-1">/</i>常用参数
+              </button>
+              <button class="tab-btn px-4 py-2 font-semibold text-ink/70" data-tab="config">
+                <i class="fa fa-cog mr-1">/</i>基础配置
+              </button>
+            </div>
+        <!-- 系统特性可视化区域（带滚动条） -->
+        <div class="visualization-scroll">
+          <div class="tab-sticky-wrapper">
+          </div>
+          <div class="tab-content active" id="visualization-tab">
+          <div class="card flex-grow p-4">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="panel-title text-lg md:text-xl"><i class="fa fa-line-chart mr-1 text-neonPurple"></i>系统特性可视化</h2>
+              <span class="mono text-xs">4挡位速比参数化实时响应</span>
+            </div>
+            
+            <!-- 电机外特性曲线（三张图水平排列） -->
+            <div class="motor-charts-row">
+              <!-- 电机1外特性曲线 -->
+              <div class="motor-chart-card glass rounded-xl p-3">
+                <div class="motor-chart-content">
+                  <h3 class="text-neonPink font-semibold mb-2 text-xs">电机1外特性曲线（额定/峰值）</h3>
+                  <div class="chart-container flex-grow">
+                    <canvas id="motor1Chart"></canvas>
+                  </div>
+                  <div class="legend-grid mt-2">
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #FF3D81;"></span>
+                      <span>额定扭矩 (Nm)</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #FF7A00;"></span>
+                      <span>峰值扭矩 (Nm)</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #7F5AF0;"></span>
+                      <span>额定功率 (kW) - 虚线</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #F5D300;"></span>
+                      <span>峰值功率 (kW) - 虚线</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 电机2外特性曲线 -->
+              <div class="motor-chart-card glass rounded-xl p-3">
+                <div class="motor-chart-content">
+                  <h3 class="text-neonCyan font-semibold mb-2 text-xs">电机2外特性曲线（额定/峰值）</h3>
+                  <div class="chart-container flex-grow">
+                    <canvas id="motor2Chart"></canvas>
+                  </div>
+                  <div class="legend-grid mt-2">
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #FF3D81;"></span>
+                      <span>额定扭矩 (Nm)</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #FF7A00;"></span>
+                      <span>峰值扭矩 (Nm)</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #7F5AF0;"></span>
+                      <span>额定功率 (kW) - 虚线</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #F5D300;"></span>
+                      <span>峰值功率 (kW) - 虚线</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 综合外特性曲线 -->
+              <div class="motor-chart-card glass rounded-xl p-3">
+                <div class="motor-chart-content">
+                  <h3 class="text-neonPurple font-semibold mb-2 text-xs">综合外特性曲线（额定/峰值）</h3>
+                  <div class="chart-container flex-grow">
+                    <canvas id="totalMotorChart"></canvas>
+                  </div>
+                  <div class="legend-grid mt-2">
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #FF3D81;"></span>
+                      <span>额定扭矩 (Nm)</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #FF7A00;"></span>
+                      <span>峰值扭矩 (Nm)</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #7F5AF0;"></span>
+                      <span>额定功率 (kW) - 虚线</span>
+                    </div>
+                    <div class="legend-item">
+                      <span class="legend-color" style="background-color: #F5D300;"></span>
+                      <span>峰值功率 (kW) - 虚线</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 总轮端峰值扭矩曲线 -->
+            <div class="torque-chart-card glass rounded-xl p-3" style="grid-column: span 3;">
+              <div class="torque-chart-content">
+                <h3 class="text-neonLime font-semibold mb-2 text-xs">总轮端峰值扭矩曲线（4挡位）</h3>
+                <div class="chart-container1 flex-grow">
+                  <canvas id="totalWheelTorqueChart"></canvas>
+                </div>
+                <div class="legend-grid mt-2" style="grid-template-columns: repeat(4, 1fr);">
+                  <div class="legend-item">
+                    <span class="legend-color" style="background-color: #ff0059ca;"></span>
+                    <span>1/2/3/4挡 - 轮端峰值扭矩</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background-color: #7ff5a0;"></span>
+                    <span>3%</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background-color: #FFCA28;"></span>
+                    <span>6%</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background-color: #84a2f7;"></span>
+                    <span>9%</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background-color: #043d1c;"></span>
+                    <span>12%</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background-color: #ffb300;"></span>
+                    <span>15%</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background-color: #ff0059ca;"></span>
+                    <span>20%</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color" style="background-color: #999999;"></span>
+                    <span>平直道路阻力曲线</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+<!-- =====================================新增部分vt图表==================================== -->
+            <div class="torque-chart-card glass rounded-xl p-3 mt-4" style="grid-column: span 3;">
+              <div class="vt-chart-content">
+                <h3 class="text-neonOrange font-semibold mb-2 text-xs">车速-时间(V-T)曲线估算（RK4数值解）（未考虑换挡时间，实际时间自行增加）</h3>
+                <div class="vt-chart-container flex-grow">
+                  <canvas id="vtChart"></canvas>
+                </div>
+                <div class="legend-grid mt-2" style="grid-template-columns: repeat(1, 1fr);">
+                  <div class="legend-item">
+                    <span class="legend-color" style="background-color: #32E6E2;"></span>
+                    <span>车速-时间曲线 (km/h)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+<!-- =====================================新增部分vt图表==================================== -->
+          </div>
+        </div>
+<!-- 选项卡2号：常用参数取值范围，tab-content hidden与tab-content active同级-->
+        <div class="tab-content hidden" id="params-tab">
+          <div class="card flex-grow p-4">
+            <div class="flex items-center justify-between mb-4">
+            <!-- 和“系统特性可视化”一致的标题样式 -->
+              <h2 class="panel-title text-lg md:text-xl"><i class="fa fa-book mr-1 text-neonCyan">/</i>常用参数取值范围</h2>
+            </div>
+          <div class="mb-6">
+            <h3 class="font-bold text-base mb-2 text-ink">一、整车与阻力参数</h3>
+            <div class="space-y-3">
+              <div class="p-3 bg-gray-50 rounded-lg">
+                <h4 class="font-semibold">1. 各类汽车空气阻力系数 C<sub>D</sub></h4>
+                <ul class="list-disc list-inside text-sm mt-1 space-y-1">
+                  <li>敞篷车身：0.5 ~ 0.7</li>
+                  <li>箱式货车车身：0.5 ~ 0.6</li>
+                  <li>凹背（浮顶）式车身：0.4 ~ 0.55</li>
+                  <li>前照灯、后轮、备胎在车身内，无保险杠：0.3 ~ 0.4</li>
+                  <li>前照灯及全部车轮在车身内，覆盖地板：0.2 ~ 0.25</li>
+                  <li>K型：0.23</li>
+                  <li>最优流线型设计：0.15 ~ 0.20</li>
+                  <li>载货汽车：0.8 ~ 1.5</li>
+                  <li>大客车：0.6 ~ 0.7</li>
+                  <li>流线型大客车：0.3 ~ 0.4</li>
+                </ul>
+                <p class="text-xs mt-2 text-ink/70">注：目前多数轿车风阻系数0.28 ~ 0.40；性能车可低至0.25；赛车甚至达0.18。</p>
+              </div>
+
+              <div class="p-3 bg-gray-50 rounded-lg">
+                <h4 class="font-semibold">2. 不同条件下的空气密度 ρ</h4>
+                <ul class="list-disc list-inside text-sm mt-1 space-y-1">
+                  <li>在标准状况（0℃，1个标准大气压）下，其值为 1.293 kg/m³</li>
+                  <li>海平面平均空气密度为 1.225 kg/m³</li>
+                  <li>通常情况下，即 20 ℃ 时，空气密度取 1.205 kg/m³。</li>
+                  <li>计算公式为空气密度 = 1.293 × (实际压力 / 标准大气压) × (273.15 / 实际绝对温度)</li>
+                  <li>绝对温度 = 摄氏温度 + 273.15 ，1个标准大气压为 760mmHg（即1.01325×10⁵Pa）</li>
+                </ul>
+                <p class="text-xs mt-2 text-ink/70">注：Cd × A × u² / 21.15 中，21.15为空气密度取 1.225 kg/m³计算所得</p>
+              </div>
+
+              <div class="mb-4">
+                <h3 class="font-bold text-base mb-2 text-ink">常用空气密度表</h3>
+                <div class="overflow-x-auto">
+                  <table class="w-full border-collapse text-sm">
+                    <thead>
+                      <tr class="bg-gray-100">
+                        <th class="border p-2 text-left">绝对压力（Mpa）</th>
+                        <th class="border p-2 text-left">空气温度（℃）</th>
+                        <th class="border p-2 text-left">空气密度（kg/m³）</th>
+                        <th class="border p-2 text-left">绝对压力（Mpa）</th>
+                        <th class="border p-2 text-left">空气温度（℃）</th>
+                        <th class="border p-2 text-left">空气密度（kg/m³）</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td class="border p-2">0.1</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">1.1691</td>
+                        <td class="border p-2">1.4</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">16.367</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">0.2</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">2.3382</td>
+                        <td class="border p-2">1.5</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">17.357</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">0.3</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">3.5073</td>
+                        <td class="border p-2">1.6</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">18.706</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">0.4</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">4.6764</td>
+                        <td class="border p-2">1.7</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">19.875</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">0.5</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">5.8455</td>
+                        <td class="border p-2">1.8</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">21.044</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">0.6</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">7.0146</td>
+                        <td class="border p-2">1.9</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">22.213</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">0.7</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">8.1837</td>
+                        <td class="border p-2">2.0</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">23.382</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">0.8</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">9.3528</td>
+                        <td class="border p-2">2.1</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">24.551</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">0.9</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">10.552</td>
+                        <td class="border p-2">2.2</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">25.720</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">1.0</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">11.691</td>
+                        <td class="border p-2">2.3</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">26.889</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">1.1</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">12.860</td>
+                        <td class="border p-2">2.4</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">28.058</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">1.2</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">14.029</td>
+                        <td class="border p-2">2.5</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">29.228</td>
+                      </tr>
+                      <tr>
+                        <td class="border p-2">1.3</td>
+                        <td class="border p-2">25</td>
+                        <td class="border p-2">15.198</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="p-3 bg-gray-50 rounded-lg">
+                <h4 class="font-semibold">3. 滚动阻力系数 f</h4>
+                <ul class="list-disc list-inside text-sm mt-1 space-y-1">
+                  <li>良好的沥青或水泥路面：0.010 ~ 0.018</li>
+                  <li>一般的沥青或水泥路面：0.018 ~ 0.020</li>
+                  <li>碎石路：0.020 ~ 0.025</li>
+                  <li>干燥土路：0.025 ~ 0.035</li>
+                  <li>潮湿土路：0.05 ~ 0.15</li>
+                  <li>冰路面：0.015 ~ 0.03</li>
+                  <li>压紧雪路面：0.03 ~ 0.05</li>
+                  <li>卵石路面：0.025 ~ 0.03</li>
+                  <li>干沙路面：0.1 ~ 0.3</li>
+                  <li>湿沙路面：0.06 ~ 0.15</li>
+                </ul>
+                <!---<p class="text-xs mt-2 text-ink/70">注：路面状态对滚动阻力影响大，且与车速有关；车速50km/h时，良好沥青路f≈0.010，新铺砂石路f≈0.120。</p>
+              ----->
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <h3 class="font-bold text-base mb-2 text-ink">二、附着系数 φ</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full border-collapse text-sm">
+                <thead>
+                  <tr class="bg-gray-100">
+                    <th class="border p-2 text-left">路面类型</th>
+                    <th class="border p-2 text-left">状态</th>
+                    <th class="border p-2 text-left">高压轮胎</th>
+                    <th class="border p-2 text-left">越野轮胎</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="border p-2">沥青、混凝土路面</td>
+                    <td class="border p-2">干燥</td>
+                    <td class="border p-2">0.50 ~ 0.70</td>
+                    <td class="border p-2">0.70 ~ 0.80</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2">沥青、混凝土路面</td>
+                    <td class="border p-2">潮湿</td>
+                    <td class="border p-2">0.35 ~ 0.45</td>
+                    <td class="border p-2">0.50 ~ 0.60</td>
+                  </tr>
+                  <tr>
+                    <td class="border p-2">碎石路面</td>
+                    <td class="border p-2">干燥</td>
+                    <td class="border p-2">0.50 ~ 0.60</td>
+                    <td class="border p-2">0.60 ~ 0.70</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2">碎石路面</td>
+                    <td class="border p-2">潮湿</td>
+                    <td class="border p-2">0.30 ~ 0.40</td>
+                    <td class="border p-2">0.40 ~ 0.55</td>
+                  </tr>
+                  <tr>
+                    <td class="border p-2">土路</td>
+                    <td class="border p-2">干燥</td>
+                    <td class="border p-2">0.40 ~ 0.50</td>
+                    <td class="border p-2">0.50 ~ 0.60</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2">土路</td>
+                    <td class="border p-2">湿润</td>
+                    <td class="border p-2">0.20 ~ 0.40</td>
+                    <td class="border p-2">0.35 ~ 0.50</td>
+                  </tr>
+                  <tr>
+                    <td class="border p-2">土路</td>
+                    <td class="border p-2">泥泞</td>
+                    <td class="border p-2">0.15 ~ 0.25</td>
+                    <td class="border p-2">0.20 ~ 0.30</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="p-3 bg-gray-50 rounded-lg">
+            <h4 class="font-semibold">三、阻力计算公式</h4>
+            <ul class="list-disc list-inside text-sm mt-1 space-y-1">
+              <li>空气阻力：F<sub>w</sub> = 0.5 * ρ * C<sub>D</sub> × A × u²</li>
+              <li>坡度阻力：F<sub>i</sub> = G × sinα（G为车辆重力，α为坡度角）</li>
+              <li>滚动阻力：F<sub>f</sub> = f × G × cosα</li>
+              <li>加速阻力：F<sub>j</sub> = δ × m × du/dt（δ为旋转质量换算系数）</li>
+            </ul>
+          </div>
+
+          <div class="p-3 bg-gray-50 rounded-lg">
+            <h4 class="font-semibold">四、轮胎滚动半径计算</h4>
+            <ul class="list-disc list-inside text-sm mt-1 space-y-1">
+              <li>轮胎滚动半径计算：以 235/75R15 为例，轮胎宽度 235 mm，75为扁平率，轮胎截面高度为 235 * 0.75 = 176.25 mm，15 是直径（英寸），故直径为15 * 25.4 = 381 mm。故滚动半径为：(176.25 * 2 + 381) / 2 = 366.75 mm</li>
+              <li>如下为斜交轮胎滚动半径表</li>
+            </ul>
+            <div class="mt-3 overflow-x-auto">
+              <table class="w-full border-collapse text-xs">
+                <thead>
+                  <tr class="bg-gray-100">
+                    <th class="border p-2 text-center">种类</th>
+                    <th class="border p-2 text-center">规格</th>
+                    <th class="border p-2 text-center">断面宽±3.5%</th>
+                    <th class="border p-2 text-center">外直径±1.0%</th>
+                    <th class="border p-2 text-center">滚动半径</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center" rowspan="27">斜交轮胎</td>
+                    <td class="border p-2 text-center">14.00-20</td>
+                    <td class="border p-2 text-center">375</td>
+                    <td class="border p-2 text-center">1240</td>
+                    <td class="border p-2 text-center">590.38217</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">13.00-20</td>
+                    <td class="border p-2 text-center">340</td>
+                    <td class="border p-2 text-center">1177</td>
+                    <td class="border p-2 text-center">560.38694</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">12.00-24</td>
+                    <td class="border p-2 text-center">315</td>
+                    <td class="border p-2 text-center">1225</td>
+                    <td class="border p-2 text-center">583.24045</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">12.00-20</td>
+                    <td class="border p-2 text-center">315</td>
+                    <td class="border p-2 text-center">1125</td>
+                    <td class="border p-2 text-center">535.62898</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">11.00-20</td>
+                    <td class="border p-2 text-center">293</td>
+                    <td class="border p-2 text-center">1085</td>
+                    <td class="border p-2 text-center">516.58439</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">10.00-20</td>
+                    <td class="border p-2 text-center">278</td>
+                    <td class="border p-2 text-center">1055</td>
+                    <td class="border p-2 text-center">502.30096</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">9.00-20</td>
+                    <td class="border p-2 text-center">259</td>
+                    <td class="border p-2 text-center">1018</td>
+                    <td class="border p-2 text-center">484.68471</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">9.00-16</td>
+                    <td class="border p-2 text-center">255</td>
+                    <td class="border p-2 text-center">890</td>
+                    <td class="border p-2 text-center">423.74204</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">8.25-20</td>
+                    <td class="border p-2 text-center">235</td>
+                    <td class="border p-2 text-center">974</td>
+                    <td class="border p-2 text-center">463.73567</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">8.25-16</td>
+                    <td class="border p-2 text-center">235</td>
+                    <td class="border p-2 text-center">855</td>
+                    <td class="border p-2 text-center">407.07803</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">7.50-20</td>
+                    <td class="border p-2 text-center">215</td>
+                    <td class="border p-2 text-center">935</td>
+                    <td class="border p-2 text-center">445.16722</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">7.50-16</td>
+                    <td class="border p-2 text-center">215</td>
+                    <td class="border p-2 text-center">805</td>
+                    <td class="border p-2 text-center">383.20769</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">7.50-14</td>
+                    <td class="border p-2 text-center">190</td>
+                    <td class="border p-2 text-center">691</td>
+                    <td class="border p-2 text-center">328.99522</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">7.00-20</td>
+                    <td class="border p-2 text-center">200</td>
+                    <td class="border p-2 text-center">904</td>
+                    <td class="border p-2 text-center">430.40764</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">7.00-16</td>
+                    <td class="border p-2 text-center">200</td>
+                    <td class="border p-2 text-center">775</td>
+                    <td class="border p-2 text-center">368.98885</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">7.00-14</td>
+                    <td class="border p-2 text-center">178</td>
+                    <td class="border p-2 text-center">669</td>
+                    <td class="border p-2 text-center">318.5207</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">6.70-13</td>
+                    <td class="border p-2 text-center">170</td>
+                    <td class="border p-2 text-center">658</td>
+                    <td class="border p-2 text-center">313.28344</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">6.50-16</td>
+                    <td class="border p-2 text-center">185</td>
+                    <td class="border p-2 text-center">750</td>
+                    <td class="border p-2 text-center">357.08599</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">6.50-14</td>
+                    <td class="border p-2 text-center">180</td>
+                    <td class="border p-2 text-center">705</td>
+                    <td class="border p-2 text-center">335.66083</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">6.00-16</td>
+                    <td class="border p-2 text-center">170</td>
+                    <td class="border p-2 text-center">730</td>
+                    <td class="border p-2 text-center">347.56369</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">6.00-15</td>
+                    <td class="border p-2 text-center">170</td>
+                    <td class="border p-2 text-center">705</td>
+                    <td class="border p-2 text-center">335.66083</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">6.00-14</td>
+                    <td class="border p-2 text-center">170</td>
+                    <td class="border p-2 text-center">680</td>
+                    <td class="border p-2 text-center">323.75796</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">6.00-12</td>
+                    <td class="border p-2 text-center">156</td>
+                    <td class="border p-2 text-center">574</td>
+                    <td class="border p-2 text-center">273.28981</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">5.60-13</td>
+                    <td class="border p-2 text-center">145</td>
+                    <td class="border p-2 text-center">600</td>
+                    <td class="border p-2 text-center">285.66879</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">5.00-12</td>
+                    <td class="border p-2 text-center">143</td>
+                    <td class="border p-2 text-center">568</td>
+                    <td class="border p-2 text-center">270.43312</td>
+                  </tr>
+                  <tr class="bg-gray-50">
+                    <td class="border p-2 text-center">5.00-10</td>
+                    <td class="border p-2 text-center">143</td>
+                    <td class="border p-2 text-center">517</td>
+                    <td class="border p-2 text-center">246.15127</td>
+                  </tr>
+                  <tr class="bg-white">
+                    <td class="border p-2 text-center">4.50-12</td>
+                    <td class="border p-2 text-center">127</td>
+                    <td class="border p-2 text-center">545</td>
+                    <td class="border p-2 text-center">259.49248</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+<!--tab-content hidden与tab-content active同级，active对应可视化，hidden对应常用参数--->
+        </div>
+      </div>
+      <!----------------- 选项卡3号：基础配置选项卡内容 -------------------->
+        <div class="tab-content hidden" id="config-tab">
+          <div class="card flex-grow p-4">
+            <!-- 常用配置存档标题栏（含+/-按钮） -->
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-2">
+                <h2 class="panel-title text-lg md:text-xl">
+                  <i class="fa fa-save mr-1 text-neonOrange"></i>常用配置存档
+                </h2>
+                <!-- 新增：+/-操作按钮 -->
+                <div class="flex gap-2">
+                  <button id="addConfigBtn" class="btn bg-neonLime/20 border-neonLime hover:bg-neonLime/30">
+                    <i class="fa fa-plus"></i>保存当前配置
+                  </button>
+                  <button id="delConfigBtn" class="btn bg-dfcvRed/20 border-dfcvRed hover:bg-dfcvRed/30">
+                    <i class="fa fa-minus"></i>删除选中配置
+                  </button>
+                </div>
+              </div>
+              <span class="mono text-xs">本地存储，刷新/退出不丢失。更改参数过多时会稍有卡顿</span>
+            </div>
+
+            <!-- 常用配置存档容器（滚动布局） -->
+            <div id="configArchiveContainer" class="visualization-scroll" style="max-height: 700px;">
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- 配置卡片将通过JS动态生成，初始默认配置也由JS渲染 -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+      <!-- 右侧：参数输入区域 -->
+      <div class="fixed-param-sidebar">
+        <div class="param-content">
+          <h2 class="panel-title mb-4 text-lg flex items-center gap-2">
+            <i class="fa fa-sliders text-neonCyan"></i>
+            <span>参数输入</span>
+          </h2>
+          
+          <!-- 车辆与路面参数 -->
+          <div class="mb-4">
+            <h3 class="text-neonCyan font-semibold mb-2 text-base">车辆与路面</h3>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  计算质量 m (kg)
+                  <input type="text" id="input_m" class="input-number" value="28000" onchange="validateInput('m', 2000, 85000)">
+                </label>
+                <input id="m" type="range" min="2000" max="85000" step="100" value="28000" class="range" oninput="syncInputValueWithDebounce('m')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  空气阻力系数 Cd
+                  <input type="text" id="input_cd" class="input-number" value="0.500" onchange="validateInput('cd', 0.1, 0.8)">
+                </label>
+                <input id="cd" type="range" min="0.1" max="0.8" step="0.005" value="0.500" class="range" oninput="syncInputValueWithDebounce('cd')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  空气密度 ρ (kg/m³)
+                  <input type="text" id="input_rho" class="input-number" value="1.225" onchange="validateInput('rho', 0.8, 1.4)">
+                </label>
+                <input id="rho" type="range" min="0.8" max="1.4" step="0.001" value="1.225" class="range" oninput="syncInputValueWithDebounce('rho')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  迎风面积 A (m²)
+                  <input type="text" id="input_A" class="input-number" value="9.5" onchange="validateInput('A', 1.8, 16)">
+                </label>
+                <input id="A" type="range" min="1.8" max="16" step="0.05" value="9.5" class="range" oninput="syncInputValueWithDebounce('A')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  滚阻 f
+                  <input type="text" id="input_cr" class="input-number" value="0.015" onchange="validateInput('cr', 0.007, 0.025)">
+                </label>
+                <input id="cr" type="range" min="0.007" max="0.025" step="0.001" value="0.015" class="range" oninput="syncInputValueWithDebounce('cr')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  附着系数 μ
+                  <input type="text" id="input_mu" class="input-number" value="0.9" onchange="validateInput('mu', 0, 1.5)">
+                </label>
+                <input id="mu" type="range" min="0" max="1.5" step="0.01" value="0.9" class="range" oninput="syncInputValueWithDebounce('mu')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  旋转质量换算系数 δ
+                  <input type="text" id="input_delta" class="input-number" value="1.05" onchange="validateInput('delta', 1, 1.4)">
+                </label>
+                <input id="delta" type="range" min="1" max="1.4" step="0.01" value="1.05" class="range" oninput="syncInputValueWithDebounce('delta')">
+              </div>
+               <!-- 轴距 L (mm) -->
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  轴距 L (mm)
+                  <input type="text" id="input_L" class="input-number" value="3500" onchange="validateInput('L', 0, 10000)">
+                </label>
+                <input id="L" type="range" min="0" max="10000" step="10" value="3500" class="range" oninput="syncInputValueWithDebounce('L')">
+              </div>
+              <!-- 前轴距 a / 后轴距 b（双向联动滑块） -->
+              <div class="relative">
+                <div class="text-xs opacity-80 mb-1 text-center">前轴距 a / 后轴距 b (mm)<br>（双驱动轴近似看作单轴）</div>
+                <div class="relative h-10 flex items-center">
+                  <input type="text" id="input_a" class="input-number absolute left-0 z-10" value="1750" style="width:60px;">
+                  <input type="text" id="input_b" class="input-number absolute right-0 z-10" value="1750" style="width:60px;">
+                  <input id="ab_slider" type="range" min="0" max="3500" step="10" value="1750" 
+                    class="w-full h-2 rounded-full bg-gray-200 outline-none appearance-none cursor-pointer">
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  轮胎半径 rd (m)
+                  <input type="text" id="input_rd" class="input-number" value="0.54" onchange="validateInput('rd', 0.3, 1.2)">
+                </label>
+                <input id="rd" type="range" min="0.3" max="1.2" step="0.01" value="0.54" class="range" oninput="syncInputValueWithDebounce('rd')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  爬坡度 (%)
+                  <input type="text" id="input_slope" class="input-number" value="0" onchange="validateInput('slope', 0, 80)">
+                </label>
+                <input id="slope" type="range" min="0" max="80" step="1" value="0" class="range" oninput="syncInputValueWithDebounce('slope')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  爬坡车速 (km/h)
+                  <input type="text" id="input_slopeSpeed" class="input-number" value="0" onchange="validateInput('slopeSpeed', 0, 160)">
+                </label>
+                <input id="slopeSpeed" type="range" min="0" max="160" step="1" value="0" class="range" oninput="syncInputValueWithDebounce('slopeSpeed')">
+              </div>
+            </div>
+          </div>
+          
+          <!-- 电机1参数 -->
+          <div class="mb-4">
+            <h3 class="text-neonPink font-semibold mb-2 text-base">电机1参数</h3>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  额定功率 (kW)
+                  <input type="text" id="input_TratedPower" class="input-number" value="150" onchange="validateInput('TratedPower', 0, 400)">
+                </label>
+                <input id="TratedPower" type="range" min="0" max="400" step="5" value="150" class="range" oninput="syncInputValueWithDebounce('TratedPower')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  峰值功率 (kW)
+                  <input type="text" id="input_TpeakPower" class="input-number" value="250" onchange="validateInput('TpeakPower', 0, 600)">
+                </label>
+                <input id="TpeakPower" type="range" min="0" max="600" step="5" value="250" class="range" oninput="syncInputValueWithDebounce('TpeakPower')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  额定扭矩 (Nm)
+                  <input type="text" id="input_TratedTorque" class="input-number" value="300" onchange="validateInput('TratedTorque', 0, 1000)">
+                </label>
+                <input id="TratedTorque" type="range" min="0" max="1000" step="10" value="300" class="range" oninput="syncInputValueWithDebounce('TratedTorque')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  峰值扭矩 (Nm)
+                  <input type="text" id="input_TpeakTorque" class="input-number" value="550" onchange="validateInput('TpeakTorque', 0, 1500)">
+                </label>
+                <input id="TpeakTorque" type="range" min="0" max="1600" step="10" value="550" class="range" oninput="syncInputValueWithDebounce('TpeakTorque')">
+              </div>
+            </div>
+          </div>
+          
+          <!-- 电机2参数 -->
+          <div class="mb-4">
+            <h3 class="text-neonCyan font-semibold mb-2 text-base">电机2参数</h3>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  额定功率 (kW)
+                  <input type="text" id="input_FratedPower" class="input-number" value="150" onchange="validateInput('FratedPower', 0, 400)">
+                </label>
+                <input id="FratedPower" type="range" min="0" max="400" step="5" value="150" class="range" oninput="syncInputValueWithDebounce('FratedPower')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  峰值功率 (kW)
+                  <input type="text" id="input_FpeakPower" class="input-number" value="250" onchange="validateInput('FpeakPower', 0, 600)">
+                </label>
+                <input id="FpeakPower" type="range" min="0" max="600" step="5" value="250" class="range" oninput="syncInputValueWithDebounce('FpeakPower')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  额定扭矩 (Nm)
+                  <input type="text" id="input_FratedTorque" class="input-number" value="300" onchange="validateInput('FratedTorque', 0, 1000)">
+                </label>
+                <input id="FratedTorque" type="range" min="0" max="1000" step="10" value="300" class="range" oninput="syncInputValueWithDebounce('FratedTorque')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  峰值扭矩 (Nm)
+                  <input type="text" id="input_FpeakTorque" class="input-number" value="550" onchange="validateInput('FpeakTorque', 0, 1500)">
+                </label>
+                <input id="FpeakTorque" type="range" min="0" max="1600" step="10" value="550" class="range" oninput="syncInputValueWithDebounce('FpeakTorque')">
+              </div>
+            </div>
+          </div>
+          
+          <!-- 减速器与转速参数 -->
+          <div class="mb-4">
+            <h3 class="text-neonPurple font-semibold mb-2 text-base">减速器与转速</h3>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  最高转速 n<sub>max</sub> (rpm)
+                  <input type="text" id="input_nmax" class="input-number" value="9000" onchange="validateInput('nmax', 0, 18000)">
+                </label>
+                <input id="nmax" type="range" min="0" max="18000" step="100" value="9000" class="range" oninput="syncInputValueWithDebounce('nmax')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  1挡速比 i<sub>1</sub>
+                  <input type="text" id="input_i1" class="input-number" value="71.0" onchange="validateInput('i1', 0.1, 120)">
+                </label>
+                <input id="i1" type="range" min="0.1" max="120" step="0.1" value="71.0" class="range" oninput="syncInputValueWithDebounce('i1')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  2挡速比 i<sub>2</sub>
+                  <input type="text" id="input_i2" class="input-number" value="36.3" onchange="validateInput('i2', 0.1, 120)">
+                </label>
+                <input id="i2" type="range" min="0.1" max="120" step="0.1" value="36.3" class="range" oninput="syncInputValueWithDebounce('i2')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  3挡速比 i<sub>3</sub>
+                  <input type="text" id="input_i3" class="input-number" value="20.0" onchange="validateInput('i3', 0.1, 120)">
+                </label>
+                <input id="i3" type="range" min="0.1" max="120" step="0.1" value="20.0" class="range" oninput="syncInputValueWithDebounce('i3')">
+              </div>
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  4挡速比 i<sub>4</sub>
+                  <input type="text" id="input_i4" class="input-number" value="10.2" onchange="validateInput('i4', 0.1, 120)">
+                </label>
+                <input id="i4" type="range" min="0.1" max="120" step="0.1" value="10.2" class="range" oninput="syncInputValueWithDebounce('i4')">
+              </div>
+<!-- ============ 换挡转速 ============ -->
+            <div class="mt-6 pt-5 border-t border-gray-300">
+              <div class="flex justify-center gap-10 mb-6">
+                <label class="flex items-center gap-3 cursor-pointer select-none">
+                  <input type="radio" name="shiftMode" value="auto" checked 
+                    class="sr-only peer">
+                  <div class="relative w-6 h-6 rounded-full border-2 border-neonCyan 
+                  peer-checked:border-neonLime peer-checked:after:absolute 
+                  peer-checked:after:inset-1 peer-checked:after:rounded-full 
+                  peer-checked:after:bg-neonLime"></div>
+                  <span class="text-sm font-semibold text-ink">换挡转速nmax</span>
+                </label>
+
+                <label class="flex items-center gap-3 cursor-pointer select-none">
+                  <input type="radio" name="shiftMode" value="manual" 
+                     class="sr-only peer">
+                  <div class="relative w-6 h-6 rounded-full border-2 border-gray-400 
+                  peer-checked:border-neonPink peer-checked:after:absolute 
+                  peer-checked:after:inset-1 peer-checked:after:rounded-full 
+                  peer-checked:after:bg-neonPink"></div>
+                  <span class="text-sm font-semibold text-ink">手动调整换挡转速</span>
+                </label>
+              </div>
+              <div class="flex flex-wrap gap-6 justify-center items-end">
+                <div class="flex-1 min-w-[220px] max-w-[300px]">
+                  <label class="block text-xs font-semibold text-ink/80 mb-1.5 text-center">
+                    1→2挡 换挡转速 (rpm)
+                  </label>
+                  <input type="number" id="shiftRPM1" min="0" step="10"
+                    class="w-full px-4 py-3 rounded-xl border-2 border-gray-300 text-lg font-mono text-center 
+                    focus:border-neonCyan focus:outline-none focus:ring-4 focus:ring-neonCyan/20 transition-all
+                    disabled:bg-gray-100 disabled:text-gray-500"
+                    disabled>
+                </div>
+    
+                <div class="flex-1 min-w-[220px] max-w-[300px]">
+                  <label class="block text-xs font-semibold text-ink/80 mb-1.5 text-center">
+                    2→3挡 换挡转速 (rpm)
+                  </label>
+                  <input type="number" id="shiftRPM2" min="0" step="10"
+                    class="w-full px-4 py-3 rounded-xl border-2 border-gray-300 text-lg font-mono text-center 
+                    focus:border-neonCyan focus:outline-none focus:ring-4 focus:ring-neonCyan/20 transition-all
+                    disabled:bg-gray-100 disabled:text-gray-500"
+                    disabled>
+                </div>
+    
+                <div class="flex-1 min-w-[220px] max-w-[300px]">
+                  <label class="block text-xs font-semibold text-ink/80 mb-1.5 text-center">
+                    3→4挡 换挡转速 (rpm)
+                  </label>
+                  <input type="number" id="shiftRPM3" min="0" step="10"
+                    class="w-full px-4 py-3 rounded-xl border-2 border-gray-300 text-lg font-mono text-center 
+                    focus:border-neonCyan focus:outline-none focus:ring-4 focus:ring-neonCyan/20 transition-all
+                    disabled:bg-gray-100 disabled:text-gray-500"
+                    disabled>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+          
+          <!-- 电控与效率链参数 -->
+          <div>
+            <h3 class="text-neonPurple font-semibold mb-2 text-base">电控与效率链</h3>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  电机系统效率 (%)
+                  <input type="text" id="input_etaMotorSys" class="input-number" value="95.0" onchange="validateInput('etaMotorSys', 85, 99.5)">
+                </label>
+                <input id="etaMotorSys" type="range" min="85" max="99.5" step="0.1" value="95.0" class="range" oninput="syncInputValueWithDebounce('etaMotorSys')">
+              </div>
+              <!---
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  电池效率 (电机输入/电池输出)(%)
+                  <input type="text" id="input_etaBattery" class="input-number" value="90.0" onchange="validateInput('etaBattery', 85, 99.5)">
+                </label>
+                <input id="etaBattery" type="range" min="85" max="99.5" step="0.1" value="90.0" class="range" oninput="syncInputValueWithDebounce('etaBattery')">
+              </div>
+              -->
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  1挡传动效率 (%)
+                  <input type="text" id="input_etaGear1" class="input-number w-20 text-right" value="96.0" onchange="validateInput('etaGear1',90,100)">
+                </label>
+                <input id="etaGear1" type="range" min="90" max="100" step="0.1" value="96.0" class="range mt-1" oninput="syncInputValueWithDebounce('etaGear1')">
+              </div>
+              <!-- 2挡 -->
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  2挡传动效率 (%)
+                  <input type="text" id="input_etaGear2" class="input-number w-20 text-right" value="97.0" onchange="validateInput('etaGear2',90,100)">
+                </label>
+                <input id="etaGear2" type="range" min="90" max="100" step="0.1" value="97.0" class="range mt-1" oninput="syncInputValueWithDebounce('etaGear2')">
+              </div>
+              <!-- 3挡 -->
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  3挡传动效率 (%)
+                  <input type="text" id="input_etaGear3" class="input-number w-20 text-right" value="98.0" onchange="validateInput('etaGear3',90,100)">
+                </label>
+                <input id="etaGear3" type="range" min="90" max="100" step="0.1" value="98.0" class="range mt-1" oninput="syncInputValueWithDebounce('etaGear3')">
+              </div>
+              <!-- 4挡 -->
+              <div>
+                <label class="block text-xs opacity-80 flex justify-between items-center">
+                  4挡传动效率 (%)
+                  <input type="text" id="input_etaGear4" class="input-number w-20 text-right" value="99.5" onchange="validateInput('etaGear4',90,100)">
+                </label>
+                <input id="etaGear4" type="range" min="90" max="100" step="0.1" value="99.5" class="range mt-1" oninput="syncInputValueWithDebounce('etaGear4')">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 页脚 -->
+  <div class="footer-section">
+    <div class="card max-w-6xl mx-auto text-center p-3">
+      <div class="text-base font-bold text-ink">电驱系统动力性计算</div>
+      <div class="text-xs text-ink/80 mt-0.5">技术咨询 | 仿真分析 | 前瞻技术方案解析</div>
+      <div class="flex flex-wrap gap-1 justify-center mt-1 text-xs text-ink/70">
+        <span>发布日期: 20xx.x.x</span>
+        <span>|</span>
+        <span>最后更新: 20xx.x.x</span>
+      </div>
+      <div class="flex flex-wrap gap-1 justify-center mt-0.5 text-xs">
+        <span>微信: <b class="text-neonCyan">新能源开发部电驱科室</b></span>
+        <span>|</span>
+        <span>邮箱: <a href="mailto:xxxxxx@dfcv.com.cn" class="underline text-neonCyan">xxxxxx@dfcv.com.cn</a></span>
+      </div>
+      <div class="text-xs text-ink/80 mt-0.5">若有需求或建议请联系上述邮箱</div>
+      <div class="text-xs text-ink/60 mt-1">© 2025 东风商用车有限公司 保留所有权利</div>
+    </div>
+  </div>
+
+<!-- JS核心逻辑 -->
+<script>
+  const _0x539923=_0x4790;(function(_0x793831,_0x54fe3a){const _0x579d73=_0x4790,_0xd0f9a6=_0x793831();while(!![]){try{const _0x599965=parseInt(_0x579d73(0x160))/(-0x1*0x1565+0x664*0x4+-0x215*0x2)+parseInt(_0x579d73(0x1c0))/(0x7*0x43c+-0x1*0x9fe+-0x4*0x4e9)*(-parseInt(_0x579d73(0x15b))/(-0x246b*-0x1+-0x13*0x129+-0xe5d))+-parseInt(_0x579d73(0x145))/(0x1f0c*0x1+0x1393*-0x1+-0xb75*0x1)+parseInt(_0x579d73(0x86))/(0x7*-0x58d+0x1*0x19db+0xd05)*(parseInt(_0x579d73(0xbd))/(0x131a+-0x13b4+-0x14*-0x8))+-parseInt(_0x579d73(0x18b))/(0x1*-0xd2b+0x30*-0x50+0x191*0x12)+parseInt(_0x579d73(0x177))/(-0x723+0x25*0x38+0x3*-0x4f)*(parseInt(_0x579d73(0x6a))/(0x437+-0x7c7+0x3*0x133))+-parseInt(_0x579d73(0xdb))/(0x1893+0x1b04+-0x338d)*(-parseInt(_0x579d73(0x75))/(0x80*-0x5+-0x2514+0x279f));if(_0x599965===_0x54fe3a)break;else _0xd0f9a6['push'](_0xd0f9a6['shift']());}catch(_0x263d8f){_0xd0f9a6['push'](_0xd0f9a6['shift']());}}}(_0x5804,0x374e*0xe+0x149d*-0x1+-0xa4*-0x11be),document[_0x539923(0xf3)](_0x539923(0x182),function(_0x4af5a5){_0x4af5a5['preventDefault']();}),document[_0x539923(0xf3)](_0x539923(0xc2),function(_0x2f82d0){const _0x3809f2=_0x539923;if(_0x2f82d0[_0x3809f2(0x171)]===_0x3809f2(0x99)){if(_0x3809f2(0x15f)===_0x3809f2(0x15f))return _0x2f82d0[_0x3809f2(0x101)](),![];else{const _0x28f6ae=this[_0x3809f2(0x9b)]===_0x3809f2(0x10f);_0x420bdf[_0x3809f2(0x107)](_0x3809f2(0xd4))['disabled']=!_0x28f6ae,_0x138346[_0x3809f2(0x107)](_0x3809f2(0xfe))['disabled']=!_0x28f6ae,_0x3a9b8a[_0x3809f2(0x107)]('shiftRPM3')[_0x3809f2(0x73)]=!_0x28f6ae;if(_0x28f6ae){const _0xca8bd6=_0x4534b2(_0x341a8['getElementById'](_0x3809f2(0x71))['value']);_0x8bd482[_0x3809f2(0x107)](_0x3809f2(0xd4))['value']=_0x247fb6[_0x3809f2(0x107)](_0x3809f2(0xd4))[_0x3809f2(0x9b)]||_0xca8bd6,_0x488ddd[_0x3809f2(0x107)](_0x3809f2(0xfe))[_0x3809f2(0x9b)]=_0x5121d7[_0x3809f2(0x107)](_0x3809f2(0xfe))[_0x3809f2(0x9b)]||_0xca8bd6,_0x47ad21[_0x3809f2(0x107)](_0x3809f2(0x11b))[_0x3809f2(0x9b)]=_0x5e28a5[_0x3809f2(0x107)](_0x3809f2(0x11b))[_0x3809f2(0x9b)]||_0xca8bd6;}_0x5634fe();}}if(_0x2f82d0[_0x3809f2(0x121)]&&_0x2f82d0[_0x3809f2(0x1b7)]&&(_0x2f82d0[_0x3809f2(0x171)]==='I'||_0x2f82d0[_0x3809f2(0x171)]==='i'))return _0x2f82d0[_0x3809f2(0x101)](),![];if(_0x2f82d0[_0x3809f2(0x121)]&&(_0x2f82d0[_0x3809f2(0x171)]==='U'||_0x2f82d0['key']==='u')){if(_0x3809f2(0x12d)!==_0x3809f2(0x10a))return _0x2f82d0['preventDefault'](),![];else{const _0xc3f5b7=_0x8b020c[_0x3809f2(0x175)](_0x6579e3(_0x7ea42b)[_0x3809f2(0xfb)](0x2b*-0x29+0x5*-0x6b5+0x286d))||0x2107+-0x14ff+0x8*-0x181;_0x5c1aef['push']({'label':'最高车速点','data':[{'x':_0x2d072e(_0x197ed5),'y':_0xc3f5b7}],'backgroundColor':_0x3809f2(0xa6),'borderColor':_0x3809f2(0xc6),'borderWidth':0x4,'pointRadius':0xa,'pointHoverRadius':0xe});}}if(_0x2f82d0[_0x3809f2(0x121)]&&(_0x2f82d0['key']==='S'||_0x2f82d0[_0x3809f2(0x171)]==='s')){if('ZdTrx'!==_0x3809f2(0x191))_0x346d07[_0x3809f2(0xf3)](_0x3809f2(0x127),function(){const _0x53308b=_0x3809f2,_0x1fa051=this[_0x53308b(0x9b)]===_0x53308b(0x10f);_0x1dec92['getElementById'](_0x53308b(0xd4))[_0x53308b(0x73)]=!_0x1fa051,_0x3b5696[_0x53308b(0x107)]('shiftRPM2')['disabled']=!_0x1fa051,_0x3fa0e3[_0x53308b(0x107)](_0x53308b(0x11b))[_0x53308b(0x73)]=!_0x1fa051;if(_0x1fa051){const _0x2a9447=_0x2ec2ca(_0x1fc9f9[_0x53308b(0x107)](_0x53308b(0x71))['value']);_0x453121[_0x53308b(0x107)]('shiftRPM1')[_0x53308b(0x9b)]=_0x297bb1[_0x53308b(0x107)](_0x53308b(0xd4))[_0x53308b(0x9b)]||_0x2a9447,_0x1dc41d[_0x53308b(0x107)](_0x53308b(0xfe))[_0x53308b(0x9b)]=_0x2fa2f3[_0x53308b(0x107)](_0x53308b(0xfe))['value']||_0x2a9447,_0x38762b[_0x53308b(0x107)](_0x53308b(0x11b))[_0x53308b(0x9b)]=_0x512baf[_0x53308b(0x107)](_0x53308b(0x11b))['value']||_0x2a9447;}_0x2a16d4();});else return _0x2f82d0[_0x3809f2(0x101)](),![];}if(_0x2f82d0['ctrlKey']&&_0x2f82d0[_0x3809f2(0x1b7)]&&(_0x2f82d0[_0x3809f2(0x171)]==='J'||_0x2f82d0[_0x3809f2(0x171)]==='j'))return _0x2f82d0[_0x3809f2(0x101)](),![];if(_0x2f82d0[_0x3809f2(0x1b7)]&&_0x2f82d0[_0x3809f2(0x171)]===_0x3809f2(0x7f)){if(_0x3809f2(0x133)==='ZreLX')return _0x2f82d0[_0x3809f2(0x101)](),![];else{if(_0x1172b3){const _0x23bf78=_0x410307['apply'](_0x15f9e9,arguments);return _0x4fc750=null,_0x23bf78;}}}if(_0x2f82d0[_0x3809f2(0x8b)]&&(_0x2f82d0[_0x3809f2(0x171)]==='V'||_0x2f82d0[_0x3809f2(0x171)]==='v'))return _0x2f82d0[_0x3809f2(0x101)](),![];}),(function(){const _0x43ccd7=(function(){let _0x7985b9=!![];return function(_0x32fe98,_0x53b22b){const _0x1de9e5=_0x7985b9?function(){const _0x4d1a17=_0x4790;if('PhZmZ'!==_0x4d1a17(0x1c1)){if(_0x53b22b){if(_0x4d1a17(0xd3)===_0x4d1a17(0x89))return _0xf52a7b[_0x4d1a17(0x101)](),![];else{const _0x25ac2e=_0x53b22b['apply'](_0x32fe98,arguments);return _0x53b22b=null,_0x25ac2e;}}}else _0x3c9ff5['forEach'](_0x2fa207=>_0x2fa207[_0x4d1a17(0x78)][_0x4d1a17(0x197)](_0x4d1a17(0x13c)));}:function(){};return _0x7985b9=![],_0x1de9e5;};}());let _0x1b3398=![],_0x4db343=![];const _0x834d33=-0x412*-0x1+0x1*0x2567+-0x28d9;function _0x4913cd(){const _0x58de45=_0x4790;if(_0x58de45(0xb5)!==_0x58de45(0x84)){const _0x4ecbb9=_0x43ccd7(this,function(){const _0x3afb9c=_0x58de45;return _0x4ecbb9[_0x3afb9c(0x196)]()[_0x3afb9c(0x1a2)](_0x3afb9c(0x1c8))[_0x3afb9c(0x196)]()[_0x3afb9c(0x8e)](_0x4ecbb9)[_0x3afb9c(0x1a2)](_0x3afb9c(0x1c8));});_0x4ecbb9();if(_0x4db343)return;if(window[_0x58de45(0xed)]-window['innerWidth']>_0x834d33||window[_0x58de45(0x1a7)]-window['innerHeight']>_0x834d33)_0x1b3398=!![];else{if('Lapla'!==_0x58de45(0xee))try{console['profile'](),console[_0x58de45(0x1bd)](),_0x1b3398=![];}catch(_0x2f6397){_0x1b3398=!![];}else{const _0x52d9e0=_0x368b92[_0x58de45(0x107)](_0x225a34);_0x52d9e0&&(delete _0x52d9e0[_0x58de45(0xe4)][_0x58de45(0xdd)],_0x342c55[_0x23bf20]&&(_0x52d9e0['value']=_0x2a963a[_0x16ba92],_0x5d879e['shiftMode']==='manual'&&(_0x52d9e0[_0x58de45(0xe4)][_0x58de45(0xdd)]=_0x58de45(0x17e))));}}if(_0x1b3398&&!_0x4db343){if(_0x58de45(0xc4)!==_0x58de45(0x1b2)){_0x4db343=!![],document[_0x58de45(0x137)]['style'][_0x58de45(0x116)]='none';const _0x2d34b0=-0x1277+0x1dcf+0x1*-0xb57;let _0x201c3c=_0x2d34b0;const _0x2e47c4=document[_0x58de45(0x17f)](_0x58de45(0xb1));_0x2e47c4[_0x58de45(0x1c7)][_0x58de45(0xd1)]=_0x58de45(0x16b),_0x2e47c4[_0x58de45(0x1c7)]['top']='50%',_0x2e47c4[_0x58de45(0x1c7)][_0x58de45(0xfd)]='50%',_0x2e47c4[_0x58de45(0x1c7)][_0x58de45(0x7b)]=_0x58de45(0x176),_0x2e47c4['style'][_0x58de45(0x114)]=_0x58de45(0xbe),_0x2e47c4[_0x58de45(0x1c7)]['padding']=_0x58de45(0x178),_0x2e47c4[_0x58de45(0x1c7)][_0x58de45(0xe0)]=_0x58de45(0x1b6),_0x2e47c4[_0x58de45(0x1c7)][_0x58de45(0x119)]=_0x58de45(0x10c),_0x2e47c4[_0x58de45(0x1c7)][_0x58de45(0x12c)]=_0x58de45(0x7c),_0x2e47c4[_0x58de45(0x1c7)][_0x58de45(0x87)]='center',_0x2e47c4['style'][_0x58de45(0x1a5)]=_0x58de45(0x9c),_0x2e47c4['innerHTML']=_0x58de45(0x195),document[_0x58de45(0xec)][_0x58de45(0x17a)](_0x2e47c4);const _0x5bda26=setInterval(()=>{const _0x58f67e=_0x58de45;if(_0x58f67e(0x18a)===_0x58f67e(0xc0))return{'name':_0xb73d5a,'params':{'m':_0x51cb06(_0x58b431[_0x58f67e(0x107)]('m')[_0x58f67e(0x9b)]),'cd':_0x1fbbc8(_0x585e9['getElementById']('cd')[_0x58f67e(0x9b)]),'rho':_0x1afde5(_0xf6fa28['getElementById'](_0x58f67e(0x13e))['value']),'A':_0x252215(_0x4729eb[_0x58f67e(0x107)]('A')[_0x58f67e(0x9b)]),'cr':_0x310ef8(_0x5dbce7['getElementById']('cr')['value']),'mu':_0x49dc41(_0x592618[_0x58f67e(0x107)]('mu')[_0x58f67e(0x9b)]),'L':_0x53ef02(_0x31a067['getElementById']('L')[_0x58f67e(0x9b)]),'delta':_0x1d2d75(_0x1ce28e['getElementById'](_0x58f67e(0x96))[_0x58f67e(0x9b)]),'rd':_0x5acc59(_0x232ef8['getElementById']('rd')['value']),'slope':_0x4f46d2(_0x3119e8[_0x58f67e(0x107)](_0x58f67e(0x9f))[_0x58f67e(0x9b)]),'TratedPower':_0x7c2cf2(_0x5cabcd[_0x58f67e(0x107)](_0x58f67e(0x148))['value']),'TpeakPower':_0x3b2142(_0x3c449c[_0x58f67e(0x107)](_0x58f67e(0x187))[_0x58f67e(0x9b)]),'TratedTorque':_0x3c098f(_0x2c6ab5[_0x58f67e(0x107)](_0x58f67e(0x198))[_0x58f67e(0x9b)]),'TpeakTorque':_0x357de9(_0xf4ec7['getElementById'](_0x58f67e(0x188))[_0x58f67e(0x9b)]),'FratedPower':_0x3bfde6(_0x34ce4c[_0x58f67e(0x107)](_0x58f67e(0xce))[_0x58f67e(0x9b)]),'FpeakPower':_0x10312d(_0x2b4df9[_0x58f67e(0x107)](_0x58f67e(0x117))[_0x58f67e(0x9b)]),'FratedTorque':_0x19e8c9(_0x2653ba['getElementById'](_0x58f67e(0x138))[_0x58f67e(0x9b)]),'FpeakTorque':_0x13e53d(_0x33e231[_0x58f67e(0x107)](_0x58f67e(0xbc))['value']),'nmax':_0x29b8d5(_0x5219f0['getElementById']('nmax')[_0x58f67e(0x9b)]),'i1':_0x24e0c9(_0x3dfce3[_0x58f67e(0x107)]('i1')[_0x58f67e(0x9b)]),'i2':_0x407462(_0x444b1f['getElementById']('i2')[_0x58f67e(0x9b)]),'i3':_0x4bf044(_0x4af674[_0x58f67e(0x107)]('i3')['value']),'i4':_0x352382(_0x153768['getElementById']('i4')[_0x58f67e(0x9b)]),'etaMotorSys':_0x181798(_0x339a97[_0x58f67e(0x107)]('etaMotorSys')[_0x58f67e(0x9b)]),'etaGear1':_0xb6aede(_0x551edd[_0x58f67e(0x107)]('etaGear1')['value']),'etaGear2':_0x280a82(_0xd42b6d[_0x58f67e(0x107)](_0x58f67e(0x185))[_0x58f67e(0x9b)]),'etaGear3':_0x3d6015(_0x24f0ff[_0x58f67e(0x107)]('etaGear3')[_0x58f67e(0x9b)]),'etaGear4':_0x442699(_0x4f762a['getElementById'](_0x58f67e(0xf5))['value'])},'id':_0x330c2c[_0x58f67e(0xcb)]()[_0x58f67e(0x196)]()};else{_0x201c3c--,document[_0x58f67e(0x107)](_0x58f67e(0x1ad))[_0x58f67e(0x1c4)]=_0x201c3c;if(_0x201c3c<=0x10*-0x129+-0x25*0x3b+-0x13*-0x16d){if(_0x58f67e(0x124)===_0x58f67e(0x124))clearInterval(_0x5bda26),window[_0x58f67e(0x1c5)]();else{const _0x260c51=0xa8a+-0xf37*-0x2+-0x28f8+0.1,_0x1937b8=-0x7ed+-0x1367+-0x4*-0x707,_0x3e2250=[],_0x20c158=[];let _0x1d01c3=-0x1*0x94d+0x22e6+-0x1999,_0x4df65a=-0x10be+-0x4c5+0x1583,_0x4c23e2=-0x49*0x11+0xe44+-0x4b5*0x2;const _0x17eae5=0x1*0x77c+-0x2407+0x1c8f;while(_0x1d01c3<=_0x1937b8&&_0x4df65a>=0x870+-0x1d04+0x36e*0x6){_0x3e2250['push'](_0x1d01c3),_0x20c158[_0x58f67e(0x151)](_0x4df65a);const _0xb84dc1=_0x2b1aca(_0x4df65a,_0x4c23e2),_0x2fc7e3=_0xb84dc1*_0x260c51*(-0x3*0x4c8+0x1f13+-0x42e*0x4+0.6000000000000001),_0x54dfa2=_0x4df65a+_0x2fc7e3,_0x3b05f1=_0x596359(_0x54dfa2,_0x4c23e2)*_0x260c51*(-0x1124*0x1+0x2*0x1243+-0x135f+0.6000000000000001),_0x34a1ce=_0x4df65a+_0x3b05f1/(0x1*0x8eb+-0x1cb*-0x9+0xc86*-0x2),_0x2713a1=_0x221e09(_0x34a1ce,_0x4c23e2)*_0x260c51*(0x197a+0x1960+-0x32d7+0.6000000000000001),_0x2776f0=_0x4df65a+_0x2713a1/(-0x8e*0x35+-0x29*0x22+-0x3*-0xb9e),_0x2fe43d=_0x1ea4aa(_0x2776f0,_0x4c23e2)*_0x260c51*(-0xe4*-0x1d+-0x1880+-0x151+0.6000000000000001),_0x59d444=(_0x2fc7e3+(0x2*0x671+0x3bc*0x5+-0x1f8c)*_0x3b05f1+(0xdf1+0x2287*-0x1+-0x8*-0x293)*_0x2713a1+_0x2fe43d)/(-0x1bb6+0x24f2+-0x12*0x83);_0x4df65a+=_0x59d444;const _0x9ab272=_0x7e5919(_0x3baeac[_0x58f67e(0x107)]('rd')['value']),_0x2b83cc=_0x3efcd9(_0x5a38a4['getElementById'](_0x58f67e(0x71))['value']),_0x2a8e53=_0x475add(_0x3eea7b[_0x58f67e(0x107)]('i1')['value']),_0x5a64b9=_0x20a634(_0xf9dd5a[_0x58f67e(0x107)]('i2')['value']),_0x1536c3=_0x316dcb(_0x1662c1[_0x58f67e(0x107)]('i3')['value']),_0x585888=_0x40b0b8(_0x4db504[_0x58f67e(0x107)]('i4')[_0x58f67e(0x9b)]),_0x4c11b8=[_0x2a8e53,_0x5a64b9,_0x1536c3,_0x585888][_0x4c23e2-(-0x2*-0x351+-0x1bee+0x154d)],_0x1acc26=_0x4df65a*_0x4c11b8/((-0xcc1*-0x3+-0x3*0x29+-0x25c8+0.377)*_0x9ab272);let _0x3d0f0c=_0x2b83cc;const _0x10df9d=_0x225e30[_0x58f67e(0x12f)](_0x58f67e(0x174))[_0x58f67e(0x9b)];if(_0x10df9d===_0x58f67e(0x10f)){const _0x30b054=_0x1a0c48(_0x5b9cdc['getElementById'](_0x58f67e(0xd4))[_0x58f67e(0x9b)])||_0x2b83cc,_0x33eab2=_0x56cda3(_0x36b1c7[_0x58f67e(0x107)]('shiftRPM2')['value'])||_0x2b83cc,_0x503741=_0xe2c1c9(_0x51a9e2[_0x58f67e(0x107)](_0x58f67e(0x11b))[_0x58f67e(0x9b)])||_0x2b83cc,_0x12c752=[_0x30b054,_0x33eab2,_0x503741,_0x2b83cc];_0x3d0f0c=_0x12c752[_0x4c23e2-(0xa03*-0x1+-0xde0+-0x8b*-0x2c)];}_0x1acc26>=_0x3d0f0c&&_0x4c23e2<_0x17eae5&&_0x4c23e2++,_0x1d01c3+=_0x260c51;}return _0x7fe01={'time':_0x3e2250,'speed':_0x20c158},_0x59f8e5;}}}},-0x6*0x10e+-0x21bd*-0x1+-0x223*0xb);}else _0x5a1b3e=0x1*-0x65f+0x1*0x482+0x3*0x9f,_0x397903=![],_0x299e5c[_0x58de45(0x78)]['add']('hidden'),_0x24239d[_0x58de45(0x78)][_0x58de45(0xef)](_0x58de45(0x16c)),_0x5ba60d[_0x58de45(0x107)](_0x58de45(0xb3))[_0x58de45(0x1c7)][_0x58de45(0x116)]='none',_0x500589['body'][_0x58de45(0x78)][_0x58de45(0xef)]('content-unlocked'),_0x3fbd14[_0x58de45(0x9b)]='',_0x35c828();}}else{const _0x85243e=_0x2f775d(_0x4b715a[_0x58de45(0x9b)])||-0xb*0x373+0x10d+-0x2*-0x1948;_0x12db1e['max']=_0x85243e;let _0x3d985a=_0x30af64(_0xe1ad00[_0x58de45(0x9b)])||_0x85243e/(-0x1*-0x5e5+0x407+0x3*-0x34e);if(_0x3d985a<-0x909*0x2+0x16f*-0x16+0x319c)_0x3d985a=0xdd*0x22+-0x156f+-0x7eb*0x1;if(_0x3d985a>_0x85243e)_0x3d985a=_0x85243e;_0xebbbd1[_0x58de45(0x9b)]=_0x3d985a;const _0xf669e9=_0x85243e-_0x3d985a;_0x4925fb[_0x58de45(0x9b)]=_0xe0bc3d[_0x58de45(0x1b5)](_0x3d985a),_0xbc38c1[_0x58de45(0x9b)]=_0x5db9a5[_0x58de45(0x1b5)](_0xf669e9);}}const _0x12bc41=setInterval(_0x4913cd,-0x6cb*-0x1+-0x1dd6+0x1af3*0x1);_0x4913cd();}()));window!==window[_0x539923(0xa5)]&&(window[_0x539923(0xa5)][_0x539923(0x72)][_0x539923(0x13b)]=window['location'][_0x539923(0x13b)]);document[_0x539923(0xf3)](_0x539923(0x157),function(_0x39704b){const _0x51c026=_0x539923;_0x39704b[_0x51c026(0x101)]();}),document['addEventListener']('dragstart',function(_0x5b617d){const _0x3e8a33=_0x539923;_0x5b617d[_0x3e8a33(0x101)]();});const CORRECT_PASSWORD=_0x539923(0x172),MAX_ATTEMPTS=-0x31*-0x61+0x85b+0x1*-0x1ae7,LOCKOUT_DURATION=0x1a18+0x472*0x1+0x12*-0x191,passwordState=JSON[_0x539923(0xaf)](localStorage[_0x539923(0xac)](_0x539923(0x189)))||{'attemptCount':0x0,'isLocked':![],'lockoutEndTime':0x0};let attemptCount=passwordState['attemptCount'],isLocked=passwordState[_0x539923(0x143)],countdownInterval=null;function savePasswordState(){const _0x2f6f6c=_0x539923;localStorage[_0x2f6f6c(0x1ac)](_0x2f6f6c(0x189),JSON[_0x2f6f6c(0x156)]({'attemptCount':attemptCount,'isLocked':isLocked,'lockoutEndTime':isLocked?Date[_0x2f6f6c(0xcb)]()+LOCKOUT_DURATION*(-0x3*-0x901+0x191*0x11+0x6*-0x84a):-0x25*0x4e+-0x1b0a+0x2650}));}function checkLockoutStatus(){const _0x198194=_0x539923,_0x18793c=Date['now'](),_0x454154=document['getElementById'](_0x198194(0xa9)),_0x1accbb=document['getElementById'](_0x198194(0x1ad)),_0x2549e1=document[_0x198194(0x107)](_0x198194(0x192)),_0x212f23=document[_0x198194(0x107)](_0x198194(0x7a)),_0x47f7fa=document[_0x198194(0x107)](_0x198194(0x76));if(passwordState['lockoutEndTime']&&_0x18793c<passwordState[_0x198194(0x1c2)]){isLocked=!![],_0x212f23[_0x198194(0x73)]=!![],_0x212f23[_0x198194(0x1c7)]['backgroundColor']=_0x198194(0xff),_0x212f23[_0x198194(0x1c7)][_0x198194(0x6f)]=_0x198194(0x10b),_0x47f7fa[_0x198194(0x73)]=!![],_0x2549e1[_0x198194(0x78)][_0x198194(0xef)](_0x198194(0x16c)),_0x454154[_0x198194(0x78)][_0x198194(0x197)](_0x198194(0x16c));let _0x28c313=Math[_0x198194(0xb9)]((passwordState[_0x198194(0x1c2)]-_0x18793c)/(0x77d+0x88e+0xc23*-0x1));_0x1accbb[_0x198194(0x1c4)]=_0x28c313,countdownInterval=setInterval(()=>{const _0x21493d=_0x198194;if('wiwEK'!==_0x21493d(0xf6))_0x4c9352[_0x21493d(0x9b)]=_0x4cb6f4,_0x12df30[_0x21493d(0xd8)]=_0x49fded;else{_0x28c313--,_0x1accbb['textContent']=_0x28c313;if(_0x28c313<=-0x1341+-0x463*-0x4+0x1b5){if('lvkxs'===_0x21493d(0x134)){_0x3572f3['forEach'](_0x5f4a0b=>_0x5f4a0b[_0x21493d(0x78)]['remove'](_0x21493d(0x13c))),_0x5c733c[_0x21493d(0x78)][_0x21493d(0xef)](_0x21493d(0x13c));const _0x346913=_0x5e2321['getAttribute'](_0x21493d(0x139));_0x5a641e[_0x21493d(0x1b9)](_0x18cb96=>{const _0x3cb643=_0x21493d;_0x18cb96['classList'][_0x3cb643(0x197)](_0x3cb643(0x13c)),_0x18cb96[_0x3cb643(0x78)]['add']('hidden');}),_0x575733[_0x21493d(0x107)](_0x346913+_0x21493d(0x1a0))[_0x21493d(0x78)][_0x21493d(0xef)](_0x21493d(0x13c)),_0x72c7ed[_0x21493d(0x107)](_0x346913+'-tab')['classList'][_0x21493d(0x197)](_0x21493d(0x16c));}else clearInterval(countdownInterval),isLocked=![],attemptCount=-0x23c+0x6d*-0x59+0x2821,_0x212f23[_0x21493d(0x73)]=![],_0x212f23['style'][_0x21493d(0x114)]='',_0x212f23[_0x21493d(0x1c7)][_0x21493d(0x6f)]='',_0x47f7fa[_0x21493d(0x73)]=![],_0x454154[_0x21493d(0x78)]['add'](_0x21493d(0x16c)),savePasswordState();}}},-0x16d*0x13+0x1*0x2557+0xe*-0x74);}else{if(attemptCount>-0x1*-0x1ccc+0x2e4+-0x1fb0&&attemptCount<MAX_ATTEMPTS){const _0x17495c=MAX_ATTEMPTS-attemptCount;_0x2549e1[_0x198194(0x1c4)]=_0x198194(0x11c)+_0x17495c,_0x2549e1['classList']['remove'](_0x198194(0x16c));}}}function verifyPassword(){const _0x6aae58=_0x539923;if(isLocked)return;const _0x49eef4=document[_0x6aae58(0x107)](_0x6aae58(0x76)),_0x432b31=document[_0x6aae58(0x107)]('passwordError'),_0x59179f=document[_0x6aae58(0x107)](_0x6aae58(0x192)),_0x2273b8=document[_0x6aae58(0x107)](_0x6aae58(0xa9)),_0xa3c66f=document[_0x6aae58(0x107)](_0x6aae58(0x1ad)),_0x3360c4=document[_0x6aae58(0x107)](_0x6aae58(0x7a)),_0xdf96ce=_0x49eef4[_0x6aae58(0x9b)][_0x6aae58(0x97)]();if(_0xdf96ce===CORRECT_PASSWORD)attemptCount=-0x738+0x5e*0x5d+0x2*-0xd77,isLocked=![],_0x59179f['classList']['add']('hidden'),_0x432b31['classList']['add'](_0x6aae58(0x16c)),document[_0x6aae58(0x107)]('passwordModal')[_0x6aae58(0x1c7)][_0x6aae58(0x116)]=_0x6aae58(0xfa),document[_0x6aae58(0x137)][_0x6aae58(0x78)][_0x6aae58(0xef)](_0x6aae58(0x85)),_0x49eef4['value']='',savePasswordState();else{attemptCount++;const _0x25de72=MAX_ATTEMPTS-attemptCount;savePasswordState(),_0x432b31[_0x6aae58(0x78)][_0x6aae58(0x197)](_0x6aae58(0x16c)),_0x49eef4['value']='',_0x49eef4[_0x6aae58(0x1c7)]['animation']='shake\x200.5s\x20ease',setTimeout(()=>{const _0x405070=_0x6aae58;'Nbvay'===_0x405070(0x6e)?_0x49eef4[_0x405070(0x1c7)][_0x405070(0x19c)]='':(_0x4cb1bd=_0x5582ce[-0x6ba+0x89e*-0x1+-0x1*-0xf5b],_0x518c99=0x24d7+0x1c10+0x4*-0x1039);},0x10f8+-0x66a+0x6*-0x16f);if(_0x25de72>0x14b6+-0x532+-0xf84){if(_0x6aae58(0x1c6)===_0x6aae58(0x100))return _0x48d85a;else _0x59179f['textContent']='剩余尝试次数：'+_0x25de72,_0x59179f['classList'][_0x6aae58(0x197)](_0x6aae58(0x16c));}if(attemptCount>=MAX_ATTEMPTS){isLocked=!![],_0x3360c4[_0x6aae58(0x73)]=!![],_0x3360c4[_0x6aae58(0x1c7)][_0x6aae58(0x114)]='#666',_0x3360c4[_0x6aae58(0x1c7)][_0x6aae58(0x6f)]=_0x6aae58(0x10b),_0x49eef4[_0x6aae58(0x73)]=!![],savePasswordState(),_0x59179f['classList'][_0x6aae58(0xef)]('hidden'),_0x2273b8[_0x6aae58(0x78)][_0x6aae58(0x197)](_0x6aae58(0x16c));let _0x4f7d49=LOCKOUT_DURATION;_0xa3c66f[_0x6aae58(0x1c4)]=_0x4f7d49,countdownInterval=setInterval(()=>{const _0x404bca=_0x6aae58;_0x4f7d49--,_0xa3c66f[_0x404bca(0x1c4)]=_0x4f7d49;if(_0x4f7d49<=-0x8*-0x2d6+0xadd+-0xb2f*0x3){if(_0x404bca(0x169)!==_0x404bca(0x169)){const _0x5e2d51=_0x21afba(_0xa58603);_0x58e7e2[_0x404bca(0x107)](_0x404bca(0xcc))[_0x404bca(0x1c4)]=_0x5e2d51;}else clearInterval(countdownInterval),isLocked=![],attemptCount=0x1*0x15ab+-0x2*0xedd+0x80f,_0x3360c4[_0x404bca(0x73)]=![],_0x3360c4[_0x404bca(0x1c7)][_0x404bca(0x114)]='',_0x3360c4[_0x404bca(0x1c7)][_0x404bca(0x6f)]='',_0x49eef4[_0x404bca(0x73)]=![],_0x2273b8[_0x404bca(0x78)]['add']('hidden'),_0x432b31['classList'][_0x404bca(0xef)](_0x404bca(0x16c)),savePasswordState();}},0x1*0x1104+-0x26ff+-0x8a1*-0x3);}}}const style=document[_0x539923(0x17f)](_0x539923(0x1c7));style[_0x539923(0x1c4)]='\x0a\x20\x20@keyframes\x20shake\x20{\x0a\x20\x20\x20\x200%,\x20100%\x20{\x20transform:\x20translateX(0);\x20}\x0a\x20\x20\x20\x2025%\x20{\x20transform:\x20translateX(-5px);\x20}\x0a\x20\x20\x20\x2075%\x20{\x20transform:\x20translateX(5px);\x20}\x0a\x20\x20}\x0a',document[_0x539923(0x94)][_0x539923(0x17a)](style),document[_0x539923(0xf3)](_0x539923(0x168),function(){const _0x35ce46=_0x539923,_0xb45370=document['getElementById'](_0x35ce46(0x7a)),_0x282248=document[_0x35ce46(0x107)](_0x35ce46(0x76));checkLockoutStatus(),_0xb45370['addEventListener'](_0x35ce46(0x122),verifyPassword),_0x282248['addEventListener'](_0x35ce46(0xc2),function(_0x14ea94){const _0x12cd94=_0x35ce46;_0x14ea94['key']===_0x12cd94(0x179)&&verifyPassword();});});function debounce(_0x9d72a5,_0x4d9c2d=-0x866+-0x821+-0x11b3*-0x1){let _0x4233e5=null;return function(..._0xf73cb7){const _0x3da27c=_0x4790;if(_0x3da27c(0x15d)!==_0x3da27c(0x15d))_0x4cbac0['apply'](this,_0x2d8343),_0x1612a4=null;else{if(_0x4233e5)clearTimeout(_0x4233e5);_0x4233e5=setTimeout(()=>{const _0x24ddd1=_0x3da27c;_0x9d72a5[_0x24ddd1(0x128)](this,_0xf73cb7),_0x4233e5=null;},_0x4d9c2d);}};}const debouncedCompute=debounce(()=>{compute();},-0x3*-0x95+-0x6*-0x10+-0x125*0x1),debouncedComputeForAxle=debounce(()=>{compute();},0x584*-0x4+0x3f*0x59+0x21d);function updateShiftMode(){const _0x39c445=_0x539923,_0x2a2741=parseFloat(document[_0x39c445(0x107)]('nmax')['value'])||-0x24dc+0x4042+0x3e1*0x2,_0x1eb3af=document['querySelector'](_0x39c445(0x174))[_0x39c445(0x9b)]===_0x39c445(0x10f),_0x4b39aa=['shiftRPM1','shiftRPM2',_0x39c445(0x11b)];_0x4b39aa[_0x39c445(0x1b9)](_0x403925=>{const _0x108f95=_0x39c445,_0x2c6aeb=document[_0x108f95(0x107)](_0x403925);if(_0x2c6aeb){if(_0x108f95(0x11a)===_0x108f95(0x1a6)){const _0x161c26=_0x2c581['getElementById'](_0x3cb7fa),_0x147a5d=_0x11d560[_0x108f95(0x107)]('input_'+_0x1f76b0);_0x161c26&&_0x147a5d&&(_0x161c26[_0x108f95(0x9b)]=_0x291dea,_0x147a5d[_0x108f95(0x9b)]=_0x1e4440);}else{_0x2c6aeb[_0x108f95(0x73)]=!_0x1eb3af;if(!_0x1eb3af){if(_0x108f95(0x70)!==_0x108f95(0x70))_0x4c09c8[_0x108f95(0x101)](),this[_0x108f95(0xe4)][_0x108f95(0xdd)]='true',_0x227459(this),_0x500ca6(),this[_0x108f95(0x123)]();else{const _0x2ab748=Math[_0x108f95(0x1b5)](_0x2a2741/(0x28d*0x1+-0xdf*0x1+0x2*-0xbe))*(-0x1174+-0x2*0xaa8+0x26f6);_0x2c6aeb[_0x108f95(0x9b)]=_0x2ab748;}}}}}),compute();}window[_0x539923(0xf3)]('load',()=>{setTimeout(()=>{updateShiftPoints(),updateShiftMode();},-0x499+0x1fe1+-0x1a1c);}),document['querySelectorAll'](_0x539923(0x183))[_0x539923(0x1b9)](_0x291451=>{const _0x223861=_0x539923;_0x291451[_0x223861(0xf3)]('change',updateShiftMode);}),['shiftRPM1','shiftRPM2',_0x539923(0x11b)][_0x539923(0x1b9)](_0x5a4c02=>{const _0x228978=_0x539923,_0x5a9dc9=document[_0x228978(0x107)](_0x5a4c02);if(!_0x5a9dc9)return;_0x5a9dc9[_0x228978(0xf3)](_0x228978(0xc2),function(_0xbf88d){const _0x88314e=_0x228978;if(_0x88314e(0x92)===_0x88314e(0x8c))_0x57fe01[_0x88314e(0x171)]===_0x88314e(0x179)&&_0x5b4824();else{if(_0xbf88d[_0x88314e(0x1cd)]===-0x139b*-0x1+0x63d*0x6+-0x412*0xe||_0xbf88d[_0x88314e(0x171)]==='Enter'){if(_0x88314e(0x1aa)!==_0x88314e(0x1aa))return _0x224fc2[_0x88314e(0x101)](),![];else _0xbf88d[_0x88314e(0x101)](),this['dataset'][_0x88314e(0xdd)]=_0x88314e(0x17e),validateShiftRPM(this),compute(),this['blur']();}}});}),document[_0x539923(0x107)](_0x539923(0x71))?.['addEventListener'](_0x539923(0x106),()=>{const _0x1dc567=_0x539923;updateShiftPoints();if(document[_0x1dc567(0x12f)](_0x1dc567(0x15a))['checked']){if(_0x1dc567(0x105)!==_0x1dc567(0x12e))updateShiftMode();else{const _0xcbc9e3=_0x5e47c9(_0x3b3c23[_0x1dc567(0x107)](_0x1dc567(0xd4))['value'])||_0x2a680a,_0x328000=_0x33a2e8(_0x112f49[_0x1dc567(0x107)](_0x1dc567(0xfe))[_0x1dc567(0x9b)])||_0x56eca6,_0x42ce90=_0x1242bb(_0x5562a8[_0x1dc567(0x107)](_0x1dc567(0x11b))['value'])||_0x369e6a,_0x51b5ff=[_0xcbc9e3,_0x328000,_0x42ce90,_0xe8ac4a];_0x4d2edb=_0x51b5ff[_0x59402e-(-0x236e+0x61e*-0x2+-0x1*-0x2fab)];}}});let nmax=0x1c51*0x1+-0x2c*0x58+0x15f7;function updateShiftPoints(){const _0x26410b=_0x539923,_0x2b42d1=document['getElementById'](_0x26410b(0x71));if(!_0x2b42d1)return;const _0x37041e=parseFloat(_0x2b42d1['value'])||0x35a2+-0x4436+0xc*0x425;window[_0x26410b(0x71)]=_0x37041e,nmax=parseFloat(_0x2b42d1[_0x26410b(0x9b)]);const _0x13eb9f=document['getElementById'](_0x26410b(0xae));_0x13eb9f&&(_0x13eb9f[_0x26410b(0x9b)]=nmax,_0x13eb9f[_0x26410b(0xd8)]=nmax);const _0x405598=Math['round'](nmax/(0x56*0x54+-0x11e*-0x4+-0x20a6))*(-0x196a+0x135*0x1+0x3*0x815);[_0x26410b(0xd4),'shiftRPM2',_0x26410b(0x11b)][_0x26410b(0x1b9)](_0x2c3025=>{const _0x3da1c0=_0x26410b;if(_0x3da1c0(0xb0)!==_0x3da1c0(0x79)){const _0xd2cba3=document[_0x3da1c0(0x107)](_0x2c3025);_0xd2cba3&&(_0xd2cba3[_0x3da1c0(0xd8)]=nmax,_0xd2cba3[_0x3da1c0(0x14a)]=0x220b+-0x8*0xa9+-0x993*0x3,!_0xd2cba3[_0x3da1c0(0xe4)][_0x3da1c0(0xdd)]&&(_0xd2cba3[_0x3da1c0(0x9b)]=_0x405598));}else{_0x5235d1['disabled']=!_0x1d0015;if(!_0xd11de8){const _0x31d246=_0xba397f['round'](_0x379343/(-0xdf*0x29+-0x1a51+0x6ea*0x9))*(0x35*0x2f+0x234*0xd+-0x262d);_0x4dada9[_0x3da1c0(0x9b)]=_0x31d246;}}}),compute();}document[_0x539923(0x107)](_0x539923(0x71))?.['addEventListener'](_0x539923(0x106),updateShiftPoints),window['addEventListener'](_0x539923(0x1ca),()=>{setTimeout(updateShiftPoints,0x1fb6+-0x21ef+-0xb*-0x4f);});function openModal(){const _0x4849a5=_0x539923;document[_0x4849a5(0x107)](_0x4849a5(0xf4))[_0x4849a5(0x1c7)][_0x4849a5(0x116)]=_0x4849a5(0x13d);}function closeModal(){const _0x3fb528=_0x539923;document['getElementById'](_0x3fb528(0xf4))[_0x3fb528(0x1c7)][_0x3fb528(0x116)]=_0x3fb528(0xfa);}window[_0x539923(0x164)]=function(_0x2e2392){const _0xe21888=_0x539923,_0x4881cd=document[_0xe21888(0x107)]('errorModal');_0x2e2392['target']===_0x4881cd&&closeModal();};function validateInput(_0x520b38,_0x48eacc,_0x528656){const _0x5d4400=_0x539923,_0x2179b7=document['getElementById'](_0x5d4400(0x7d)+_0x520b38),_0x5ada2d=document[_0x5d4400(0x107)](_0x520b38);let _0x23fbb9=parseFloat(_0x2179b7['value']);if(isNaN(_0x23fbb9)||_0x23fbb9<_0x48eacc||_0x23fbb9>_0x528656){openModal(),_0x2179b7['value']=_0x5ada2d[_0x5d4400(0x9b)];return;}_0x5ada2d[_0x5d4400(0x9b)]=_0x23fbb9,debouncedCompute(),_0x520b38==='nmax'&&setTimeout(()=>{const _0x2fbf39=_0x5d4400;if(_0x2fbf39(0xe2)===_0x2fbf39(0xa8)){let _0x1cb0a0=_0x333011(_0x40fc1d[_0x2fbf39(0x9b)])||-0x21f2+0x8b*0x19+0x413*0x5;const _0x18b78a=_0x3852f1(_0x27d951[_0x2fbf39(0x9b)]);if(_0x1cb0a0<-0x1bab+-0x17b7+0x19b1*0x2)_0x1cb0a0=-0x9d6+0xaac*0x1+0x6b*-0x2;if(_0x1cb0a0>_0x18b78a)_0x1cb0a0=_0x18b78a;_0x548ed9[_0x2fbf39(0x9b)]=_0x53191c[_0x2fbf39(0x1b5)](_0x1cb0a0),_0x21c217[_0x2fbf39(0x9b)]=_0x49ee2f[_0x2fbf39(0x1b5)](_0x18b78a-_0x1cb0a0),_0x42abf3[_0x2fbf39(0x9b)]=_0x1cb0a0,_0x58e33a();}else updateShiftPoints(),document[_0x2fbf39(0x12f)](_0x2fbf39(0x15a))[_0x2fbf39(0x90)]&&updateShiftMode();},-0x7*0x48a+0x2560+-0x20*0x25);}function validateShiftRPM(_0x52b771){const _0x4bab79=_0x539923,_0xeece81=parseFloat(document[_0x4bab79(0x107)](_0x4bab79(0x71))['value'])||0x29+0x1060*0x4+0x1e81*-0x1;let _0x3ec7f3=parseFloat(_0x52b771['value'])||0x802+-0x2*-0x128b+-0x2d18;(isNaN(_0x3ec7f3)||_0x3ec7f3<-0x1b73+-0xe50*-0x1+0xd23)&&(_0x3ec7f3=-0x2125+0x3*0x5cb+0xfc4*0x1),_0x3ec7f3>_0xeece81&&(_0x3ec7f3=_0xeece81),_0x3ec7f3=Math[_0x4bab79(0x1b5)](_0x3ec7f3/(0x72*-0x1e+-0x115f+0x1*0x1ec5))*(0x5d*-0x17+0x359*-0x1+0xbbe),_0x52b771[_0x4bab79(0x9b)]=_0x3ec7f3;}function syncInputValueWithDebounce(_0x290c32){const _0x17fd46=_0x539923,_0x2dbb5e=document[_0x17fd46(0x107)](_0x290c32),_0x350193=document[_0x17fd46(0x107)](_0x17fd46(0x7d)+_0x290c32);_0x350193[_0x17fd46(0x9b)]=_0x2dbb5e[_0x17fd46(0x9b)],debouncedCompute();}function _0x4790(_0x580461,_0x479018){const _0x253b97=_0x5804();return _0x4790=function(_0x4ff790,_0x2256af){_0x4ff790=_0x4ff790-(-0x172b+-0x2247+0x39dc);let _0x2b575f=_0x253b97[_0x4ff790];return _0x2b575f;},_0x4790(_0x580461,_0x479018);}let motor1Chart,motor2Chart,totalMotorChart,totalWheelTorqueChart;const gearConfig=[{'id':0x1,'color':_0x539923(0x17b),'label':_0x539923(0x136)},{'id':0x2,'color':_0x539923(0x17b),'label':_0x539923(0x111)},{'id':0x3,'color':_0x539923(0x17b),'label':_0x539923(0xe9)},{'id':0x4,'color':_0x539923(0x17b),'label':_0x539923(0xcd)}],unifiedColors={'ratedTorque':_0x539923(0x14d),'peakTorque':_0x539923(0x1b8),'ratedPower':'#7F5AF0','peakPower':_0x539923(0x154)};function calculateMotorCharacteristics(_0x599388,_0x1ad0e7,_0x135792,_0x11ba10,_0x570128,_0x5daf82){const _0xda6439=_0x539923,_0x224477=_0x1ad0e7*(-0x1d1*0x1+0x1*0x2a6c+-0x34d)/_0x11ba10,_0x2a0d2c=_0x135792*(0x1f32+0x1e8b+-0x186f)/_0x570128;let _0x39fece=-0x136*0x7+0x1094*-0x1+0x1*0x190e;if(_0x599388<=_0x224477&&_0x599388>=-0x1*0x4+0x1f5e+-0x1f5a){if(_0xda6439(0x146)===_0xda6439(0x146))_0x39fece=_0x11ba10;else{_0x277888=!![],_0x4e835b[_0xda6439(0x73)]=!![],_0x1c391d[_0xda6439(0x1c7)][_0xda6439(0x114)]='#666',_0x306860[_0xda6439(0x1c7)][_0xda6439(0x6f)]=_0xda6439(0x10b),_0x58acff[_0xda6439(0x73)]=!![],_0x526e57(),_0x13b975[_0xda6439(0x78)]['add'](_0xda6439(0x16c)),_0x399a20[_0xda6439(0x78)][_0xda6439(0x197)]('hidden');let _0x2badd2=_0x172692;_0x4ba326[_0xda6439(0x1c4)]=_0x2badd2,_0x5e4b17=_0x556c33(()=>{const _0x2f2198=_0xda6439;_0x2badd2--,_0x5e85d2[_0x2f2198(0x1c4)]=_0x2badd2,_0x2badd2<=-0xbe2+0x799+0x449&&(_0x3db946(_0x185e54),_0x524d3a=![],_0x75a879=0x12f9+0x698+-0x1991,_0x488a15[_0x2f2198(0x73)]=![],_0x28dbf8['style']['backgroundColor']='',_0x420899[_0x2f2198(0x1c7)][_0x2f2198(0x6f)]='',_0x294b1e[_0x2f2198(0x73)]=![],_0x4ecc7e[_0x2f2198(0x78)][_0x2f2198(0xef)](_0x2f2198(0x16c)),_0x176f87[_0x2f2198(0x78)][_0x2f2198(0xef)](_0x2f2198(0x16c)),_0x431598());},0x183a*0x1+0xbc7+-0x2019);}}else _0x599388>_0x224477&&_0x599388<=_0x5daf82&&(_0x39fece=_0x1ad0e7*(0x67*0xa9+0x1*0x3d+-0x1eee)/_0x599388);let _0x26815e=0x3c*0x55+-0xa02+-0x9ea;if(_0x599388<=_0x2a0d2c&&_0x599388>=0x3*0x273+-0xce8+0x1*0x58f)'rDNAz'===_0xda6439(0xe6)?_0x26815e=_0x570128:_0x488458[_0xda6439(0x101)]();else _0x599388>_0x2a0d2c&&_0x599388<=_0x5daf82&&(_0x26815e=_0x135792*(0x4491+0x5b2+-0x24f5)/_0x599388);_0x39fece=Math[_0xda6439(0xd8)](-0xc2b*0x1+0x1f1b+-0x12f0,Math[_0xda6439(0x1af)](_0x39fece,_0x570128)),_0x26815e=Math[_0xda6439(0xd8)](-0x22d8+0x34d+0x1f8b,Math[_0xda6439(0x1af)](_0x26815e,_0x570128));const _0x2e55a0=Math['min'](_0x39fece*_0x599388/(0x3*0x450+0x13be+0x2*0x250),_0x1ad0e7),_0x42adf3=Math[_0xda6439(0x1af)](_0x26815e*_0x599388/(-0x1*-0x3635+0xa9+-0x119*0x10),_0x135792);return{'ratedT':_0x39fece,'peakT':_0x26815e,'ratedP':_0x2e55a0,'peakP':_0x42adf3};}function initCharts(){const _0x678783=_0x539923,_0x5f7955=parseFloat(document['getElementById'](_0x678783(0x13e))[_0x678783(0x9b)]),_0x5da7fb=parseFloat(document[_0x678783(0x107)](_0x678783(0x71))[_0x678783(0x9b)]),_0x1693ed=0x24d2+0x962+0x1526*-0x2,_0x4a54f5=_0x5da7fb/_0x1693ed,_0x2783d7=Array[_0x678783(0x1a4)]({'length':_0x1693ed+(0x1f07+0x8bf+0x27c5*-0x1)},(_0x123dc3,_0x460f3a)=>Math['round'](_0x460f3a*_0x4a54f5)),_0x628e70=parseFloat(document['getElementById'](_0x678783(0x148))[_0x678783(0x9b)]),_0x5cf21f=parseFloat(document['getElementById'](_0x678783(0x187))[_0x678783(0x9b)]),_0xacad=parseFloat(document['getElementById']('TratedTorque')[_0x678783(0x9b)]),_0x3d9cb4=parseFloat(document[_0x678783(0x107)](_0x678783(0x188))['value']),_0x36c5fb=parseFloat(document[_0x678783(0x107)](_0x678783(0xce))[_0x678783(0x9b)]),_0x91a35c=parseFloat(document['getElementById'](_0x678783(0x117))['value']),_0x16d167=parseFloat(document[_0x678783(0x107)](_0x678783(0x138))[_0x678783(0x9b)]),_0x5203ef=parseFloat(document[_0x678783(0x107)](_0x678783(0xbc))[_0x678783(0x9b)]),_0x3ab1b7=parseFloat(document['getElementById'](_0x678783(0x161))[_0x678783(0x9b)])/(-0x7dc*-0x3+-0x1a4+0x2*-0xac6),_0x524f86=(parseFloat(document[_0x678783(0x107)]('etaGear1')[_0x678783(0x9b)])||-0x1671+-0x1d3a+0x340b)/(0x4c*0xf+0x1a62+0x9*-0x362),_0x1b1bef=(parseFloat(document['getElementById'](_0x678783(0x185))[_0x678783(0x9b)])||0x1383+0x5bc+-0x18de)/(0x343+0x2f2*-0xd+0x236b),_0x189cff=(parseFloat(document['getElementById'](_0x678783(0x18d))[_0x678783(0x9b)])||-0xcd0+-0x1f5a+-0x2c8c*-0x1)/(-0x14a4+-0x16e6+-0x15f7*-0x2),_0x5876f5=(parseFloat(document['getElementById'](_0x678783(0xf5))[_0x678783(0x9b)])||0x17b*0xb+0x1b63+-0x2b49+0.5)/(-0x203a+-0x21c+0x22ba*0x1),_0x177cf8=[_0x524f86,_0x1b1bef,_0x189cff,_0x5876f5],_0x4e0ea6=parseFloat(document[_0x678783(0x107)]('m')[_0x678783(0x9b)]),_0xd83cd6=parseFloat(document[_0x678783(0x107)]('cd')['value']),_0x2b01f6=parseFloat(document[_0x678783(0x107)]('A')[_0x678783(0x9b)]),_0x2b97ac=parseFloat(document[_0x678783(0x107)]('cr')['value']),_0x24ed26=parseFloat(document['getElementById']('rd')['value']),_0x1e2f02=parseFloat(document[_0x678783(0x107)]('i1')['value']),_0x49d70f=parseFloat(document['getElementById']('i4')[_0x678783(0x9b)]),_0x22fa8e=(0x1199*-0x1+-0xcb5+0xf27*0x2+0.377)*_0x5da7fb*_0x24ed26/_0x49d70f,_0x2c2df7=_0x2783d7['map'](_0x39e2e1=>calculateMotorCharacteristics(_0x39e2e1,_0x628e70,_0x5cf21f,_0xacad,_0x3d9cb4,_0x5da7fb)),_0x3b486d=_0x2783d7[_0x678783(0xd6)](_0x53e8ae=>calculateMotorCharacteristics(_0x53e8ae,_0x36c5fb,_0x91a35c,_0x16d167,_0x5203ef,_0x5da7fb)),_0x260192=_0x2783d7['map']((_0x55d708,_0x1b7c1f)=>({'ratedT':_0x2c2df7[_0x1b7c1f][_0x678783(0x118)]+_0x3b486d[_0x1b7c1f][_0x678783(0x118)],'peakT':_0x2c2df7[_0x1b7c1f][_0x678783(0x11e)]+_0x3b486d[_0x1b7c1f][_0x678783(0x11e)],'ratedP':_0x2c2df7[_0x1b7c1f]['ratedP']+_0x3b486d[_0x1b7c1f]['ratedP'],'peakP':_0x2c2df7[_0x1b7c1f][_0x678783(0x77)]+_0x3b486d[_0x1b7c1f][_0x678783(0x77)]})),_0x8c82fd=document[_0x678783(0x107)](_0x678783(0xe7))[_0x678783(0x8d)]('2d');if(motor1Chart)motor1Chart[_0x678783(0xb4)]();motor1Chart=new Chart(_0x8c82fd,{'type':_0x678783(0x80),'data':{'labels':_0x2783d7,'datasets':[{'label':_0x678783(0x8a),'data':_0x2c2df7[_0x678783(0xd6)](_0x3c5a28=>_0x3c5a28['ratedT']),'borderColor':unifiedColors[_0x678783(0x18e)],'backgroundColor':_0x678783(0x7e),'borderWidth':0x2,'pointRadius':0x0,'yAxisID':'y'},{'label':'峰值扭矩\x20(Nm)','data':_0x2c2df7[_0x678783(0xd6)](_0x45eb69=>_0x45eb69[_0x678783(0x11e)]),'borderColor':unifiedColors[_0x678783(0x16d)],'backgroundColor':_0x678783(0x7e),'borderWidth':0x2,'pointRadius':0x0,'yAxisID':'y'},{'label':'额定功率\x20(kW)','data':_0x2c2df7['map'](_0x28eef6=>_0x28eef6[_0x678783(0xd0)]),'borderColor':unifiedColors[_0x678783(0x130)],'backgroundColor':_0x678783(0x7e),'borderWidth':0x2,'borderDash':[-0x7*-0x251+-0x792+-0x8a0,0x23a0+0x57*-0x3d+0x1*-0xee0],'pointRadius':0x0,'yAxisID':'y1'},{'label':_0x678783(0x1a8),'data':_0x2c2df7[_0x678783(0xd6)](_0x166723=>_0x166723['peakP']),'borderColor':unifiedColors['peakPower'],'backgroundColor':'transparent','borderWidth':0x2,'borderDash':[0x1a41+-0x21dc+0x7a0,-0x18c*0x1+0x218a+-0x1ff9],'pointRadius':0x0,'yAxisID':'y1'}]},'options':{'elements':{'line':{'tension':0.1}},'responsive':!![],'maintainAspectRatio':![],'interaction':{'mode':'index','intersect':![]},'scales':{'x':{'title':{'display':!![],'text':_0x678783(0x1cc)},'ticks':{'maxTicksLimit':0x8}},'y':{'type':_0x678783(0xd5),'display':!![],'position':_0x678783(0xfd),'title':{'display':!![],'text':_0x678783(0x149)},'ticks':{'maxTicksLimit':0x6}},'y1':{'type':'linear','display':!![],'position':'right','title':{'display':!![],'text':_0x678783(0xda)},'grid':{'drawOnChartArea':![]},'ticks':{'maxTicksLimit':0x6}}},'plugins':{'legend':{'display':![]}}}});const _0x33b3b8=document[_0x678783(0x107)](_0x678783(0xdc))[_0x678783(0x8d)]('2d');if(motor2Chart)motor2Chart[_0x678783(0xb4)]();motor2Chart=new Chart(_0x33b3b8,{'type':'line','data':{'labels':_0x2783d7,'datasets':[{'label':'额定扭矩\x20(Nm)','data':_0x3b486d[_0x678783(0xd6)](_0x1f2b0b=>_0x1f2b0b[_0x678783(0x118)]),'borderColor':unifiedColors['ratedTorque'],'backgroundColor':_0x678783(0x7e),'borderWidth':0x2,'pointRadius':0x0,'yAxisID':'y'},{'label':_0x678783(0xf9),'data':_0x3b486d['map'](_0x557eda=>_0x557eda['peakT']),'borderColor':unifiedColors[_0x678783(0x16d)],'backgroundColor':'transparent','borderWidth':0x2,'pointRadius':0x0,'yAxisID':'y'},{'label':_0x678783(0xa7),'data':_0x3b486d['map'](_0x1a6432=>_0x1a6432['ratedP']),'borderColor':unifiedColors[_0x678783(0x130)],'backgroundColor':_0x678783(0x7e),'borderWidth':0x2,'borderDash':[-0x1aee+-0xd83+0x2876,0x8b5+0x4*0x455+0x25*-0xb4],'pointRadius':0x0,'yAxisID':'y1'},{'label':_0x678783(0x1a8),'data':_0x3b486d[_0x678783(0xd6)](_0x548e9a=>_0x548e9a[_0x678783(0x77)]),'borderColor':unifiedColors[_0x678783(0x14e)],'backgroundColor':'transparent','borderWidth':0x2,'borderDash':[-0x11de*-0x2+-0x23bc+0x5,0x70d+-0x228*0xb+0x42c*0x4],'pointRadius':0x0,'yAxisID':'y1'}]},'options':{'elements':{'line':{'tension':0.1}},'responsive':!![],'maintainAspectRatio':![],'interaction':{'mode':'index','intersect':![]},'scales':{'x':{'title':{'display':!![],'text':_0x678783(0x1cc)},'ticks':{'maxTicksLimit':0x8}},'y':{'type':_0x678783(0xd5),'display':!![],'position':_0x678783(0xfd),'title':{'display':!![],'text':'扭矩\x20(Nm)'},'ticks':{'maxTicksLimit':0x6}},'y1':{'type':'linear','display':!![],'position':_0x678783(0x6b),'title':{'display':!![],'text':_0x678783(0xda)},'grid':{'drawOnChartArea':![]},'ticks':{'maxTicksLimit':0x6}}},'plugins':{'legend':{'display':![]}}}});const _0x24642d=document[_0x678783(0x107)](_0x678783(0x19d))['getContext']('2d');if(totalMotorChart)totalMotorChart['destroy']();totalMotorChart=new Chart(_0x24642d,{'type':_0x678783(0x80),'data':{'labels':_0x2783d7,'datasets':[{'label':'额定扭矩\x20(Nm)','data':_0x260192['map'](_0x5274c0=>_0x5274c0[_0x678783(0x118)]),'borderColor':unifiedColors[_0x678783(0x18e)],'backgroundColor':_0x678783(0x7e),'borderWidth':0x2,'pointRadius':0x0,'yAxisID':'y'},{'label':_0x678783(0xf9),'data':_0x260192[_0x678783(0xd6)](_0x5c62b7=>_0x5c62b7[_0x678783(0x11e)]),'borderColor':unifiedColors[_0x678783(0x16d)],'backgroundColor':_0x678783(0x7e),'borderWidth':0x2,'pointRadius':0x0,'yAxisID':'y'},{'label':'额定功率\x20(kW)','data':_0x260192[_0x678783(0xd6)](_0x4dd18a=>_0x4dd18a[_0x678783(0xd0)]),'borderColor':unifiedColors[_0x678783(0x130)],'backgroundColor':_0x678783(0x7e),'borderWidth':0x2,'borderDash':[0x1a*0xd0+0xd0*0x25+-0x1*0x332b,-0x1f22*-0x1+0x215*-0xe+-0x1f7],'pointRadius':0x0,'yAxisID':'y1'},{'label':'峰值功率\x20(kW)','data':_0x260192[_0x678783(0xd6)](_0x51c753=>_0x51c753[_0x678783(0x77)]),'borderColor':unifiedColors[_0x678783(0x14e)],'backgroundColor':_0x678783(0x7e),'borderWidth':0x2,'borderDash':[0x781*-0x1+0x3*-0xadf+-0x19*-0x19b,0x4f9+-0x93f+-0x44b*-0x1],'pointRadius':0x0,'yAxisID':'y1'}]},'options':{'elements':{'line':{'tension':0.1}},'responsive':!![],'maintainAspectRatio':![],'interaction':{'mode':_0x678783(0x82),'intersect':![]},'scales':{'x':{'title':{'display':!![],'text':'转速\x20(rpm)'},'ticks':{'maxTicksLimit':0x8}},'y':{'type':_0x678783(0xd5),'display':!![],'position':_0x678783(0xfd),'title':{'display':!![],'text':_0x678783(0x149)},'ticks':{'maxTicksLimit':0x6}},'y1':{'type':_0x678783(0xd5),'display':!![],'position':_0x678783(0x6b),'title':{'display':!![],'text':'功率\x20(kW)'},'grid':{'drawOnChartArea':![]},'ticks':{'maxTicksLimit':0x6}}},'plugins':{'legend':{'display':![]}}}});const _0x21abd7=parseFloat(document['getElementById']('mu')[_0x678783(0x9b)]),_0x4abc4c=parseFloat(document['getElementById']('L')[_0x678783(0x9b)]);let _0x4b2fc7=parseFloat(document[_0x678783(0x107)]('input_a')[_0x678783(0x9b)]),_0x4eb66f=parseFloat(document[_0x678783(0x107)]('input_b')['value']);Math[_0x678783(0x14b)](_0x4b2fc7+_0x4eb66f-_0x4abc4c)>-0x1*-0x6af+0x23*0xd+-0x875&&(_0x4b2fc7=_0x4abc4c/(0xb*-0x371+-0x2708+-0x9b*-0x7f),_0x4eb66f=_0x4abc4c/(0x57b+-0x141*0x17+-0x1*-0x175e),document['getElementById'](_0x678783(0x9e))['value']=_0x4b2fc7,document[_0x678783(0x107)](_0x678783(0xad))['value']=_0x4eb66f);const _0x1ecf5a=document['getElementById'](_0x678783(0x167)),_0x5dc0e1=document['getElementById'](_0x678783(0x9e)),_0x24ab32=document[_0x678783(0x107)](_0x678783(0xad)),_0x5f424d=document[_0x678783(0x107)](_0x678783(0x184)),_0x5cdc29=document['getElementById']('L');function _0xa4146b(){const _0x223855=_0x678783,_0x2e3932=parseFloat(_0x5cdc29[_0x223855(0x9b)])||-0x2083+0x1e55+0xfda;_0x1ecf5a[_0x223855(0xd8)]=_0x2e3932;let _0x43c9ef=parseFloat(_0x5dc0e1['value'])||_0x2e3932/(0xb*0x1c+-0xa3*0xd+-0x31*-0x25);if(_0x43c9ef<-0x10*-0x100+-0x1829+0x829)_0x43c9ef=0x4e5+-0xc3*-0x7+-0xa3a;if(_0x43c9ef>_0x2e3932)_0x43c9ef=_0x2e3932;_0x1ecf5a[_0x223855(0x9b)]=_0x43c9ef;const _0x26e56c=_0x2e3932-_0x43c9ef;_0x5dc0e1[_0x223855(0x9b)]=Math['round'](_0x43c9ef),_0x24ab32['value']=Math['round'](_0x26e56c);}_0x5cdc29['addEventListener'](_0x678783(0x106),()=>{const _0x19ab83=_0x678783;'GWRbE'!=='NNwQs'?(syncInputValue('L'),_0xa4146b()):(delete _0x4c1fa9[_0x19ab83(0xe4)][_0x19ab83(0xdd)],_0x2e63a6[_0x363ed0]&&(_0x303eaf[_0x19ab83(0x9b)]=_0x154b71[_0x43628f],_0x1250c4[_0x19ab83(0x1be)]===_0x19ab83(0x10f)&&(_0x186fcf[_0x19ab83(0xe4)]['userModified']=_0x19ab83(0x17e))));}),_0x5f424d[_0x678783(0xf3)]('change',()=>{const _0x3bc9ab=_0x678783;_0x3bc9ab(0x19f)!==_0x3bc9ab(0x19f)?(_0x209c2e(),_0x468556['querySelector'](_0x3bc9ab(0x15a))['checked']&&_0x2809f1()):(validateInput('L',0xc48+0x10fd*0x2+-0x1f*0x17e,-0x1cbb*0x1+0x470+0x3f5b),_0xa4146b());}),_0x1ecf5a[_0x678783(0xf3)]('input',()=>{const _0xad8652=_0x678783,_0x18f5da=parseFloat(_0x1ecf5a[_0xad8652(0x9b)]),_0x1f5e7d=parseFloat(_0x5cdc29['value']),_0x5a37fd=_0x1f5e7d-_0x18f5da;_0x5dc0e1[_0xad8652(0x9b)]=Math['round'](_0x18f5da),_0x24ab32[_0xad8652(0x9b)]=Math[_0xad8652(0x1b5)](_0x5a37fd),debouncedComputeForAxle();}),_0x5dc0e1['addEventListener']('change',()=>{const _0x56b04c=_0x678783;if('CBeMd'===_0x56b04c(0x17c)){let _0x177c13=parseFloat(_0x5dc0e1[_0x56b04c(0x9b)])||0x18d9+-0x263*0x7+-0x824;const _0x337e88=parseFloat(_0x5cdc29[_0x56b04c(0x9b)]);if(_0x177c13<-0x85+-0x1c86*0x1+0x1d0b)_0x177c13=-0x21bd+-0x9a1+-0xd*-0x356;if(_0x177c13>_0x337e88)_0x177c13=_0x337e88;_0x5dc0e1[_0x56b04c(0x9b)]=Math['round'](_0x177c13),_0x24ab32[_0x56b04c(0x9b)]=Math[_0x56b04c(0x1b5)](_0x337e88-_0x177c13),_0x1ecf5a[_0x56b04c(0x9b)]=_0x177c13,debouncedComputeForAxle();}else _0x32a83c[_0x56b04c(0x107)](_0x56b04c(0xa0))[_0x56b04c(0x1c4)]=_0x56b04c(0x166);}),_0x24ab32[_0x678783(0xf3)](_0x678783(0x127),()=>{const _0x412de3=_0x678783;let _0x39eb7c=parseFloat(_0x24ab32[_0x412de3(0x9b)])||0x1513+0x191c+-0x1*0x2e2f;const _0x59fda7=parseFloat(_0x5cdc29[_0x412de3(0x9b)]);if(_0x39eb7c<-0x3a5*0x8+0x1771*-0x1+0x3499)_0x39eb7c=-0x14f7+0x2625+-0x2*0x897;if(_0x39eb7c>_0x59fda7)_0x39eb7c=_0x59fda7;_0x24ab32['value']=Math[_0x412de3(0x1b5)](_0x39eb7c);const _0x566956=_0x59fda7-_0x39eb7c;_0x5dc0e1[_0x412de3(0x9b)]=Math[_0x412de3(0x1b5)](_0x566956),_0x1ecf5a[_0x412de3(0x9b)]=_0x566956,debouncedComputeForAxle();}),_0xa4146b();const _0x1c04cd=[],_0x43299b=[parseFloat(document['getElementById']('i1')[_0x678783(0x9b)]),parseFloat(document['getElementById']('i2')[_0x678783(0x9b)]),parseFloat(document['getElementById']('i3')[_0x678783(0x9b)]),parseFloat(document[_0x678783(0x107)]('i4')[_0x678783(0x9b)])];let _0x241fbe=parseFloat(document[_0x678783(0x107)](_0x678783(0xd4))['value'])||_0x5da7fb,_0x2b53a9=parseFloat(document['getElementById'](_0x678783(0xfe))[_0x678783(0x9b)])||_0x5da7fb,_0x36ea16=parseFloat(document[_0x678783(0x107)](_0x678783(0x11b))[_0x678783(0x9b)])||_0x5da7fb;_0x241fbe=Math['min'](_0x241fbe,_0x5da7fb),_0x2b53a9=Math[_0x678783(0x1af)](_0x2b53a9,_0x5da7fb),_0x36ea16=Math['min'](_0x36ea16,_0x5da7fb);const _0x197d6e=[(0x517*0x2+0x16fb+-0x28d*0xd+0.377)*_0x241fbe*_0x24ed26/_0x43299b[-0x954+-0x1a*0x15b+0x2*0x1649],(0x2013+-0x68c+0x1987*-0x1+0.377)*_0x2b53a9*_0x24ed26/_0x43299b[-0x13*-0xb+0x7c6+-0x896],(-0x72c+-0xf42+0x166e+0.377)*_0x36ea16*_0x24ed26/_0x43299b[0x1*0x21c1+-0x1374+-0xe4b],(-0x184b+-0x97*-0x33+-0x5ca+0.377)*_0x5da7fb*_0x24ed26/_0x43299b[-0x1dfd+-0xa3*-0x1c+0xc2c]];_0x43299b[_0x678783(0x1b9)]((_0x201648,_0x1837f2)=>{const _0x5966f8=_0x678783,_0x4680f7=_0x197d6e[_0x1837f2],_0x21c29a=[],_0x2c6bdb=[];_0x2783d7[_0x5966f8(0x1b9)]((_0x55f214,_0x1ffb51)=>{const _0x128679=_0x5966f8,_0x33622e=(0x1e46+0x373*-0x4+-0x107a+0.377)*_0x55f214*_0x24ed26/_0x201648;if(_0x33622e<=_0x4680f7){const _0xd20d12=_0x260192[_0x1ffb51][_0x128679(0x11e)],_0x3192e8=_0x177cf8[_0x1837f2],_0xa46e13=_0xd20d12*_0x201648*_0x3ab1b7*_0x3192e8;_0x21c29a[_0x128679(0x151)](_0x33622e),_0x2c6bdb[_0x128679(0x151)](_0xa46e13);}}),_0x1c04cd['push']({'label':gearConfig[_0x1837f2][_0x5966f8(0x186)],'data':_0x21c29a['map']((_0x12f56b,_0x3bd5fe)=>({'x':parseFloat(_0x12f56b[_0x5966f8(0xfb)](0x2679+0x1*-0xea3+-0x17d5)),'y':parseFloat(_0x2c6bdb[_0x3bd5fe][_0x5966f8(0xfb)](0x43*-0x79+-0x834*-0x2+0xf44))})),'borderColor':gearConfig[_0x1837f2][_0x5966f8(0x181)],'backgroundColor':_0x5966f8(0x7e),'borderWidth':0x2,'pointRadius':0x0,'fill':![]});});const _0x2153be=-0x7*-0x586+-0x103f*0x1+-0x3bb*0x6+0.8000000000000007;function _0x3698dd(_0x1bddb8,_0x135d96,_0x15dbb0){const _0x15624c=_0x678783,_0x4ba8d5=_0x1bddb8/(-0x1512+0x7*-0x1a+-0x81*-0x2c),_0x52ed94=Math[_0x15624c(0x115)](Math[_0x15624c(0x16a)](_0x4ba8d5)),_0x4d7601=Math['cos'](Math[_0x15624c(0x16a)](_0x4ba8d5)),_0x3ebb2f=[];for(let _0x4f18d8=0x1367+-0xe47+0x10*-0x52;_0x4f18d8<=_0x22fa8e;_0x4f18d8+=0x3*-0x2ab+0x14b*0x1d+0x1d7e*-0x1+0.5){const _0x1e4d3d=_0x4e0ea6*_0x2153be*_0x2b97ac*_0x4d7601,_0xcd382=_0x4e0ea6*_0x2153be*_0x52ed94,_0x182db5=(0xce7+-0xdc2+0x1*0xdb+0.5)*_0x5f7955*_0xd83cd6*_0x2b01f6*_0x4f18d8*_0x4f18d8/(-0x379*-0x7+-0xc5c+-0xbf0+0.6000000000000001)/(-0x2*-0x5b1+0x1927+0x1*-0x2486+0.6000000000000001),_0x192a1a=_0x1e4d3d+_0xcd382+_0x182db5,_0x25ede7=_0x192a1a*_0x24ed26;_0x3ebb2f[_0x15624c(0x151)]({'x':Number(_0x4f18d8['toFixed'](0x177a+-0x2b6*-0xa+-0x17*0x233)),'y':Math[_0x15624c(0x1b5)](_0x25ede7)});}_0x1c04cd[_0x15624c(0x151)]({'label':_0x135d96,'data':_0x3ebb2f,'borderColor':_0x15dbb0,'backgroundColor':_0x15624c(0x7e),'borderWidth':0x2,'pointRadius':0x0,'borderDash':[0x1ee+0x7*0x32b+-0x1*0x1813,0x34*-0x71+0x113d+0x5bc],'fill':![]});}_0x3698dd(0xbd+0x1*-0x21b3+0x20f9,'3%','#7ff5a0'),_0x3698dd(0x20db+0x2314*-0x1+0x1*0x23f,'6%',_0x678783(0x19e)),_0x3698dd(0xdf3+0xb92+0x65f*-0x4,'9%',_0x678783(0xf2)),_0x3698dd(-0x1*0x165e+-0x1cbf+0x3329,_0x678783(0x155),_0x678783(0x141)),_0x3698dd(-0x372*0x6+0x8d4+0xbe7,_0x678783(0xbf),_0x678783(0xe5)),_0x3698dd(0x22a1+0xa93*-0x3+0x2d4*-0x1,_0x678783(0xb2),'#ff0059ca');const _0x2c4b94=[],_0x1f6a05=new Map();for(let _0x5b0ec2=-0x1070+0xaed*-0x2+0x264a;_0x5b0ec2<=_0x22fa8e;_0x5b0ec2+=0xaea+-0x67a*-0x3+-0x1e58+0.1){const _0x41b1a9=_0x4e0ea6*_0x2153be*_0x2b97ac,_0x294b73=(0x1b95+-0x23f5*0x1+0x860+0.5)*_0x5f7955*_0xd83cd6*_0x2b01f6*_0x5b0ec2*_0x5b0ec2/(-0x9c9+0x1ff4+-0x1628+0.6000000000000001)/(0x769+0xbce+-0x1334+0.6000000000000001),_0xe6bd11=_0x41b1a9+_0x294b73,_0x18375e=Math[_0x678783(0x1b5)](_0xe6bd11*_0x24ed26);_0x2c4b94[_0x678783(0x151)]({'x':Number(_0x5b0ec2[_0x678783(0xfb)](0x2*-0xd0d+0x17ff+0x21c*0x1)),'y':_0x18375e}),_0x1f6a05[_0x678783(0x1c9)](_0x5b0ec2['toFixed'](-0x1f6*0x11+-0x7f*0x21+0x31b6),_0x18375e);}_0x1c04cd['push']({'label':_0x678783(0xf1),'data':_0x2c4b94,'borderColor':_0x678783(0x158),'backgroundColor':_0x678783(0x7e),'borderWidth':0x3,'pointRadius':0x0,'fill':![]});const _0x5d83df=[_0x678783(0x136),_0x678783(0x111),_0x678783(0xe9),_0x678783(0xcd)],_0x4b552c=[0x1db3+0x24*-0x9d+-0x1*0x79f,-0x1*-0x3b2+-0x2*0x56+-0x56*0x9,-0x1bc1+0x774+0x1*0x144d,-0xd7*0x1f+0xed7+0xb32];_0x43299b['forEach']((_0x395928,_0x38c4fd)=>{const _0x16fd60=_0x678783;if(_0x16fd60(0x150)!==_0x16fd60(0xfc)){const _0x137947=(0x955*0x1+0xca*0x22+-0x2429+0.377)*_0x5da7fb*_0x24ed26/_0x395928,_0x86aed9=_0x1c04cd[_0x16fd60(0x1b4)](_0x5cf444=>_0x5cf444[_0x16fd60(0x186)][_0x16fd60(0xba)](_0x38c4fd+(-0x1a12+-0x9e8+-0x97*-0x3d)+'挡'))?.[_0x16fd60(0xa4)]||[];let _0x3307a9=0xc57+-0xad*0xb+-0x4e8;for(const _0x5970e9 of _0x86aed9){if(_0x5970e9['x']>_0x137947)break;const _0x5860bb=_0x5970e9['x'],_0x187b84=_0x5970e9['y'],_0x55cdad=_0x4e0ea6*_0x2153be*_0x2b97ac,_0x4b6308=(0xf05+-0x225b+-0x1c2*-0xb+0.5)*_0x5f7955*_0xd83cd6*_0x2b01f6*_0x5860bb*_0x5860bb/(-0xe92+0x1720+-0x88b+0.6000000000000001)/(0xa*-0x4+0x1*-0x185b+-0x2*-0xc43+0.6000000000000001),_0x167d63=_0x55cdad+_0x4b6308,_0x375336=_0x167d63*_0x24ed26;if(_0x187b84>=_0x375336)_0x3307a9=_0x5860bb;else break;}_0x4b552c[_0x38c4fd]=Number(_0x3307a9['toFixed'](-0x186e+0x6ef+-0x4*-0x460));}else{const _0x374584=_0x161905[_0x16fd60(0x107)](_0x283241);_0x374584&&(_0x374584['max']=_0x46ad45,_0x374584[_0x16fd60(0x14a)]=-0x8*0x2ae+0x3*-0xb51+0x376d,!_0x374584[_0x16fd60(0xe4)][_0x16fd60(0xdd)]&&(_0x374584[_0x16fd60(0x9b)]=_0x6e6a78));}});const _0x5fc28f=Math[_0x678783(0xd8)](..._0x4b552c),_0x278327=Number(((0x2*-0x6ee+-0x205b+-0x1*-0x2e37+0.377)*_0x5da7fb*_0x24ed26/_0x43299b[0x1*0x4f0+-0x62f*0x1+0x142])[_0x678783(0xfb)](0x4a*0x2f+0xbd8+-0x196d)),_0x10a9b9=Math[_0x678783(0x1af)](_0x5fc28f,_0x278327)[_0x678783(0xfb)](-0xd50+0x658+0x6f9);document['getElementById'](_0x678783(0x165))[_0x678783(0x1c4)]=_0x10a9b9;const _0x3600b6=parseFloat(_0x10a9b9),_0x289483=_0x5fc28f,_0x46ce55=Number(((-0x2171+0x1cec+0x1*0x485+0.377)*_0x5da7fb*_0x24ed26/_0x43299b[-0x3ff+-0x1593+0x1995])[_0x678783(0xfb)](0x106+0x583+-0x688));let _0x4e8621,_0x42e42c;if(_0x3600b6===_0x289483){let _0x4c9223=0x596+-0x202e+-0x94*-0x2e,_0x59727f=0x22ce+-0x4bd*0x5+0xb1a*-0x1;_0x4b552c[_0x678783(0x1b9)]((_0x8769a5,_0x2765ff)=>{const _0x152a87=_0x678783;_0x152a87(0x19b)!==_0x152a87(0x19b)?(_0x35653b(_0x45fc68),_0xfbe921[_0x152a87(0x1c5)]()):_0x8769a5>_0x4c9223&&(_0x4c9223=_0x8769a5,_0x59727f=_0x2765ff);}),_0x4e8621=_0x43299b[_0x59727f],_0x42e42c=_0x59727f;}else'BZoxU'===_0x678783(0xa3)?_0xae00a0['vtChartInstance'][_0x678783(0xb4)]():(_0x4e8621=_0x43299b[0x1aaf+-0x2*-0xfe3+0x3a72*-0x1],_0x42e42c=-0x11f*0x17+0x2585+0xbb9*-0x1);if(!isNaN(_0x3600b6)&&_0x3600b6>-0x1*-0x17d1+0x1*0x1327+-0x55f*0x8&&_0x4e8621>-0x7*0x122+0x160e+-0xe20){const _0xb4b3e7=Math[_0x678783(0x1b5)](_0x3600b6*_0x4e8621/((0x1826+-0x251*0xc+0x1*0x3a6+0.377)*_0x24ed26));document['getElementById'](_0x678783(0x129))[_0x678783(0x1a3)]=_0x678783(0xf7)+_0xb4b3e7[_0x678783(0x125)]()+_0x678783(0xc5)+(_0x42e42c+(-0x22*-0x60+-0x1*0x221b+0x2*0xaae))+_0x678783(0x11d);}else document['getElementById'](_0x678783(0x129))[_0x678783(0x1c4)]='—';if(_0x5fc28f>0x199b+0x2*0x1140+-0x3c1b){if('PULus'===_0x678783(0x13f))_0x1066cd['classList'][_0x678783(0x197)](_0x678783(0x13c));else{const _0x4fd8cf=_0x1f6a05[_0x678783(0x175)](Number(_0x10a9b9)['toFixed'](-0x186f+-0xc1*-0x25+0xf*-0x3b))||0x22c*-0xc+0x139*0x1a+0x1*-0x5ba;_0x1c04cd[_0x678783(0x151)]({'label':'最高车速点','data':[{'x':Number(_0x10a9b9),'y':_0x4fd8cf}],'backgroundColor':_0x678783(0xa6),'borderColor':_0x678783(0xc6),'borderWidth':0x4,'pointRadius':0xa,'pointHoverRadius':0xe});}}const _0x362b47=parseFloat(document[_0x678783(0x107)]('TpeakTorque')[_0x678783(0x9b)]),_0x5772ff=parseFloat(document[_0x678783(0x107)](_0x678783(0xbc))['value']),_0x2a9dce=(_0x362b47+_0x5772ff)*_0x1e2f02*_0x3ab1b7*_0x524f86/_0x24ed26,_0x364e87=_0x4e0ea6*_0x2153be*_0x4b2fc7/_0x4abc4c,_0x3c78bd=_0x21abd7*_0x364e87,_0x336aea=document[_0x678783(0x107)](_0x678783(0x1cb));_0x2a9dce>_0x3c78bd*(0xc0c+0x1ed4*-0x1+-0x15*-0xe5+0.010000000000000009)?_0x336aea['innerHTML']='<span\x20class=\x22text-red-600\x20font-bold\x20text-3xl\x22>是</span>':_0x336aea[_0x678783(0x1a3)]=_0x678783(0x14f);const _0x4b8498=parseFloat(document[_0x678783(0x107)](_0x678783(0x9f))[_0x678783(0x9b)])||0x1986+0x1235+0x2bbb*-0x1,_0x41bf9a=parseFloat(document[_0x678783(0x107)](_0x678783(0x1bc))[_0x678783(0x9b)])||-0xde7+0x1907+-0xb20;if(_0x4b8498>0x2fb+-0x37*-0x1+-0x1*0x332&&_0x41bf9a>0xa6b+0x1*-0x248a+0x9*0x2e7&&_0x41bf9a<=_0x22fa8e){const _0x497dd7=_0x4b8498/(-0x1462*-0x1+0x2ed*-0x1+-0x1111),_0x1e05f3=Math['sin'](Math[_0x678783(0x16a)](_0x497dd7)),_0x56fe63=Math[_0x678783(0x193)](Math[_0x678783(0x16a)](_0x497dd7)),_0x2cc61d=_0x41bf9a,_0x4ffa34=_0x4e0ea6*_0x2153be*_0x2b97ac*_0x56fe63,_0x44498f=_0x4e0ea6*_0x2153be*_0x1e05f3,_0x497575=_0xd83cd6*_0x2b01f6*_0x2cc61d*_0x2cc61d/(-0xb1f+-0x142a+0xfa6*0x2+0.6000000000000001)/(-0x7fb+0x2f*0x71+-0xcc1+0.6000000000000001)*(0x115*-0x12+0xa8d*-0x2+0x2894+0.5)*_0x5f7955,_0x19a732=_0x4ffa34+_0x44498f+_0x497575,_0x33749d=Math[_0x678783(0x1b5)](_0x19a732*_0x24ed26);_0x1c04cd[_0x678783(0x151)]({'label':_0x678783(0x1c3),'data':[{'x':_0x41bf9a,'y':_0x33749d}],'backgroundColor':_0x678783(0xa2),'borderColor':_0x678783(0xa6),'borderWidth':0x3,'pointRadius':0x5,'pointHoverRadius':0x5,'pointStyle':_0x678783(0xeb)}),_0x1c04cd[_0x678783(0x151)]({'data':[{'x':_0x41bf9a,'y':0x0},{'x':_0x41bf9a,'y':_0x33749d}],'borderColor':_0x678783(0xa2),'borderWidth':0x2,'borderDash':[0x239f+0x27*0xad+-0x3df4,0x17f0+0x103*0x2+-0x67c*0x4],'pointRadius':0x0,'tension':0x0,'fill':![],'skipNull':!![]}),_0x1c04cd['push']({'data':[{'x':0x0,'y':_0x33749d},{'x':_0x41bf9a,'y':_0x33749d}],'borderColor':_0x678783(0xa2),'borderWidth':0x2,'borderDash':[-0x1*0x211+-0x2a2*0xa+0x5*0x5af,0xbf5*0x1+-0x1c59+0x106a],'pointRadius':0x0,'tension':0x0,'fill':![],'skipNull':!![]});}const _0x159ad9=document[_0x678783(0x107)](_0x678783(0x1bf))['getContext']('2d'),_0x53bf57=Math[_0x678783(0x1af)](0x1af3+-0x97a*0x3+-0x29*-0x13,Math[_0x678783(0xb9)](_0x22fa8e/(0x2*0xe52+-0x3*0xc4b+0x847*0x1))*(-0x831*0x1+0x70a+0x131));if(totalWheelTorqueChart)totalWheelTorqueChart[_0x678783(0xb4)]();totalWheelTorqueChart=new Chart(_0x159ad9,{'type':_0x678783(0x80),'data':{'datasets':_0x1c04cd},'options':{'responsive':!![],'maintainAspectRatio':![],'elements':{'line':{'tension':0.1}},'scales':{'x':{'type':_0x678783(0xd5),'position':_0x678783(0xe3),'title':{'display':!![],'text':'车速\x20(km/h)'},'ticks':{'maxTicksLimit':0xa},'min':0x0,'max':_0x53bf57},'y':{'type':'linear','position':_0x678783(0xfd),'title':{'display':!![],'text':_0x678783(0x1b1)},'ticks':{'maxTicksLimit':0xa}}},'plugins':{'legend':{'display':![]}}}});}let vtData={'time':[],'speed':[]};function getTotalMotorTorque(_0x256ff5){const _0x4e46f1=_0x539923,_0x28e206=parseFloat(document['getElementById'](_0x4e46f1(0x198))[_0x4e46f1(0x9b)]),_0x4d40ee=parseFloat(document[_0x4e46f1(0x107)](_0x4e46f1(0x188))[_0x4e46f1(0x9b)]),_0x5a2574=parseFloat(document[_0x4e46f1(0x107)](_0x4e46f1(0x138))[_0x4e46f1(0x9b)]),_0x2bfa41=parseFloat(document[_0x4e46f1(0x107)]('FpeakTorque')[_0x4e46f1(0x9b)]),_0x4cc94c=parseFloat(document['getElementById'](_0x4e46f1(0x187))[_0x4e46f1(0x9b)]),_0x2da8b4=parseFloat(document[_0x4e46f1(0x107)](_0x4e46f1(0x117))[_0x4e46f1(0x9b)]),_0x85ce9f=parseFloat(document[_0x4e46f1(0x107)]('TratedPower')[_0x4e46f1(0x9b)]),_0x3243fd=parseFloat(document['getElementById']('FratedPower')[_0x4e46f1(0x9b)]),_0x3af7c9=parseFloat(document[_0x4e46f1(0x107)]('nmax')['value']),_0x11657d=_0x28e206+_0x5a2574,_0x10355c=_0x4d40ee+_0x2bfa41,_0x5160bb=_0x85ce9f+_0x3243fd,_0x705903=_0x4cc94c+_0x2da8b4,_0x1198b3=_0x705903*(0x2c69*0x1+0x51*-0xa5+0x1f6*0x17)/_0x10355c;if(_0x256ff5<=_0x1198b3)return _0x10355c;else{if(_0x256ff5<=_0x3af7c9)return(-0x4aa*-0x1+0x1f7*-0x1+-0x1*-0x229b)*_0x705903/_0x256ff5;else{if('rUPhv'===_0x4e46f1(0x17d))_0x43abcb[_0x4e46f1(0x107)]('shiftSpeed2')[_0x4e46f1(0x1c4)]=_0x4e46f1(0x9a);else return 0x1*-0x14b+0x2*-0x18a+0x175*0x3;}}}function calculateFq(_0x4e1544,_0x511ffa){const _0xaf5dd9=_0x539923,_0x1f76db=parseFloat(document[_0xaf5dd9(0x107)](_0xaf5dd9(0x161))[_0xaf5dd9(0x9b)])/(0x9b3+0x4*-0x14c+-0x41f*0x1),_0x2f8bc6=parseFloat(document[_0xaf5dd9(0x107)]('rd')[_0xaf5dd9(0x9b)]),_0x505622=parseFloat(document[_0xaf5dd9(0x107)]('nmax')[_0xaf5dd9(0x9b)]),_0x4bd538=parseFloat(document[_0xaf5dd9(0x107)]('i1')['value']),_0x4ca870=parseFloat(document[_0xaf5dd9(0x107)]('i2')['value']),_0x5a9749=parseFloat(document['getElementById']('i3')[_0xaf5dd9(0x9b)]),_0x40c8cb=parseFloat(document[_0xaf5dd9(0x107)]('i4')[_0xaf5dd9(0x9b)]),_0x410db3=parseFloat(document['getElementById']('etaGear1')[_0xaf5dd9(0x9b)])/(-0x19*-0xf4+-0xd*0x1fb+-0x3*-0xc5),_0x598aff=parseFloat(document['getElementById'](_0xaf5dd9(0x185))[_0xaf5dd9(0x9b)])/(-0x7*-0x373+-0x1*-0x1a35+-0x31f6),_0x5e7ed1=parseFloat(document[_0xaf5dd9(0x107)]('etaGear3')['value'])/(0x186*0x6+0x62*0x17+0x3*-0x5da),_0x4dde07=parseFloat(document[_0xaf5dd9(0x107)](_0xaf5dd9(0xf5))[_0xaf5dd9(0x9b)])/(0x3e2+0xf50+-0x12ce),_0x3f5681=[_0x410db3,_0x598aff,_0x5e7ed1,_0x4dde07],_0x32afbf=[_0x4bd538,_0x4ca870,_0x5a9749,_0x40c8cb][_0x511ffa-(-0x758+0x4d*-0x73+-0x2*-0x14f8)],_0x15a518=_0x4e1544*_0x32afbf/((0x20a1+-0x28a+-0x1e17*0x1+0.377)*_0x2f8bc6);let _0x4aa169=_0x505622;const _0x78fc8b=document[_0xaf5dd9(0x12f)](_0xaf5dd9(0x174))['value'];if(_0x78fc8b===_0xaf5dd9(0x10f)){if(_0xaf5dd9(0x159)!==_0xaf5dd9(0x159)){_0x810680(),_0x2b9016(),_0x321d01();const _0x492044=_0x3948ee(_0x5eeed7[_0xaf5dd9(0x107)](_0xaf5dd9(0x1b0))[_0xaf5dd9(0x9b)]);!_0x180457(_0x492044)&&_0x492044>0x25cd+0x2582+-0x4b4f&&(_0x1a4828[_0xaf5dd9(0x107)]('accelerationTime')['textContent']=_0x5459e6(_0x492044));}else{const _0x30f5eb=parseFloat(document['getElementById']('shiftRPM1')[_0xaf5dd9(0x9b)])||_0x505622,_0x42c265=parseFloat(document[_0xaf5dd9(0x107)](_0xaf5dd9(0xfe))['value'])||_0x505622,_0x5983df=parseFloat(document[_0xaf5dd9(0x107)]('shiftRPM3')[_0xaf5dd9(0x9b)])||_0x505622,_0x135057=[_0x30f5eb,_0x42c265,_0x5983df,_0x505622];_0x4aa169=_0x135057[_0x511ffa-(0x3*0x31c+0xaca+0x10f*-0x13)];}}if(_0x15a518>_0x4aa169||_0x15a518<-0x159f+0x6*0xd6+0x147*0xd)return 0x326*-0xb+0x181d+0x1*0xa85;const _0x57d1f0=getTotalMotorTorque(_0x15a518),_0x574e27=_0x57d1f0*_0x32afbf*_0x1f76db*_0x3f5681[_0x511ffa-(-0x1*-0x1ab1+-0x20dd+0x62d)];return _0x574e27/_0x2f8bc6;}function calculateAcceleration(_0x52e649,_0x373a2f){const _0x3d866d=_0x539923,_0x11d98e=parseFloat(document[_0x3d866d(0x107)]('m')['value']),_0xa764f2=0x1f1+-0x1*0x2231+0x2049+0.8000000000000007,_0x3ca725=parseFloat(document[_0x3d866d(0x107)]('cr')['value']),_0x180196=parseFloat(document[_0x3d866d(0x107)](_0x3d866d(0x13e))[_0x3d866d(0x9b)]),_0x2e448c=parseFloat(document['getElementById']('cd')[_0x3d866d(0x9b)]),_0x58c19f=parseFloat(document[_0x3d866d(0x107)]('A')[_0x3d866d(0x9b)]),_0x398145=parseFloat(document[_0x3d866d(0x107)](_0x3d866d(0x96))[_0x3d866d(0x9b)]),_0x574e8f=calculateFq(_0x52e649,_0x373a2f),_0x3ba29a=_0x11d98e*_0xa764f2*_0x3ca725,_0x429dca=_0x52e649/(0x1*0x87d+0xb*0x2fc+-0x294e+0.6000000000000001),_0x20a5e5=(-0x305*0x1+0x1f1c+0x11*-0x1a7+0.5)*_0x180196*_0x2e448c*_0x58c19f*Math[_0x3d866d(0x102)](_0x429dca,0x73d+-0x1122+-0x1fb*-0x5),_0x17bc54=(_0x574e8f-_0x3ba29a-_0x20a5e5)/(_0x398145*_0x11d98e);return Math['max'](_0x17bc54,-0x1062+0x1f05*0x1+-0xea3);}function calculateVTWithRK4(){const _0x2717b9=_0x539923,_0x1938f6=0x14c5+0x10e2+-0x51*0x77+0.1,_0x5a7fe2=0x427*0x1+-0x17*0x101+-0x4*-0x4ee,_0x2fe012=[],_0xf9c2=[];let _0x355bc0=-0x1*0xa72+-0x1f12+0x2*0x14c2,_0x5067f7=-0x1bb1+-0x13fc+0x2fad,_0x1b4a11=0x13f3+-0x2d2+-0x224*0x8;const _0x1de7be=-0x1544+-0x1*-0xf31+-0x1*-0x617;while(_0x355bc0<=_0x5a7fe2&&_0x5067f7>=0x75e*0x1+-0x1*-0x1373+0x1ad1*-0x1){if(_0x2717b9(0x10d)==='hAxNA'){_0x2fe012['push'](_0x355bc0),_0xf9c2['push'](_0x5067f7);const _0x2fa120=calculateAcceleration(_0x5067f7,_0x1b4a11),_0x57a020=_0x2fa120*_0x1938f6*(-0x1866+-0x5*0x23b+0x8e4*0x4+0.6000000000000001),_0x4c79e4=_0x5067f7+_0x57a020,_0x24641e=calculateAcceleration(_0x4c79e4,_0x1b4a11)*_0x1938f6*(-0x113e*0x2+0x213f+0x140+0.6000000000000001),_0x3b1659=_0x5067f7+_0x24641e/(-0x1*0x9f5+0x1f04+-0x150d),_0x1f2ce9=calculateAcceleration(_0x3b1659,_0x1b4a11)*_0x1938f6*(-0xb*0x31a+0x18d9+0x948+0.6000000000000001),_0xe216e9=_0x5067f7+_0x1f2ce9/(-0x1ee2+0x16f0+0x7f4),_0xc91865=calculateAcceleration(_0xe216e9,_0x1b4a11)*_0x1938f6*(-0xcc5+0x9*-0xb+0xd2b+0.6000000000000001),_0x3e5b56=(_0x57a020+(-0x1efb+0x2134+0x1b*-0x15)*_0x24641e+(-0x175b+-0x22c7+-0x3d*-0xf4)*_0x1f2ce9+_0xc91865)/(0x245+-0x114d*0x1+-0x787*-0x2);_0x5067f7+=_0x3e5b56;const _0x558aba=parseFloat(document[_0x2717b9(0x107)]('rd')[_0x2717b9(0x9b)]),_0x29d358=parseFloat(document[_0x2717b9(0x107)]('nmax')[_0x2717b9(0x9b)]),_0xb89264=parseFloat(document[_0x2717b9(0x107)]('i1')[_0x2717b9(0x9b)]),_0x2c3dd7=parseFloat(document['getElementById']('i2')['value']),_0x25427c=parseFloat(document['getElementById']('i3')[_0x2717b9(0x9b)]),_0x3cca00=parseFloat(document[_0x2717b9(0x107)]('i4')[_0x2717b9(0x9b)]),_0x5860fd=[_0xb89264,_0x2c3dd7,_0x25427c,_0x3cca00][_0x1b4a11-(0x3*-0x709+0x65d+0xebf*0x1)],_0x4bee23=_0x5067f7*_0x5860fd/((0x190+-0xc60+0x2b4*0x4+0.377)*_0x558aba);let _0x50b220=_0x29d358;const _0x749e98=document[_0x2717b9(0x12f)](_0x2717b9(0x174))['value'];if(_0x749e98==='manual'){const _0x16cf04=parseFloat(document['getElementById']('shiftRPM1')[_0x2717b9(0x9b)])||_0x29d358,_0x404891=parseFloat(document[_0x2717b9(0x107)](_0x2717b9(0xfe))[_0x2717b9(0x9b)])||_0x29d358,_0x36ce46=parseFloat(document[_0x2717b9(0x107)]('shiftRPM3')[_0x2717b9(0x9b)])||_0x29d358,_0x164dc5=[_0x16cf04,_0x404891,_0x36ce46,_0x29d358];_0x50b220=_0x164dc5[_0x1b4a11-(-0x1b*0x67+0x332*0x5+-0x51c)];}_0x4bee23>=_0x50b220&&_0x1b4a11<_0x1de7be&&_0x1b4a11++,_0x355bc0+=_0x1938f6;}else _0x2f6a20();}return vtData={'time':_0x2fe012,'speed':_0xf9c2},vtData;}function calculateShiftSpeeds(){const _0x5e575c=_0x539923,_0x9d60cf=parseFloat(document['getElementById']('rd')['value'])||-0x135*-0x1f+-0x1512+-0x1059+0.54,_0x4672c6=parseFloat(document['getElementById']('i1')[_0x5e575c(0x9b)])||-0xad*0x2b+-0x4be*0x7+0x3e88,_0x3b6ebb=parseFloat(document[_0x5e575c(0x107)]('i2')[_0x5e575c(0x9b)])||-0x1017+0x251f+-0x14e4+0.29999999999999716,_0x494d32=parseFloat(document['getElementById']('i3')[_0x5e575c(0x9b)])||0x4*0x144+0xa55+-0xf51,_0x3526db=parseFloat(document[_0x5e575c(0x107)](_0x5e575c(0x71))['value'])||-0x1bf8+-0x609+0xdd5*0x5;let _0x29a7df=parseFloat(document[_0x5e575c(0x107)](_0x5e575c(0xd4))[_0x5e575c(0x9b)])||_0x3526db,_0x57becc=parseFloat(document[_0x5e575c(0x107)](_0x5e575c(0xfe))[_0x5e575c(0x9b)])||_0x3526db,_0x54a7d8=parseFloat(document[_0x5e575c(0x107)]('shiftRPM3')['value'])||_0x3526db;_0x29a7df=Math['min'](_0x29a7df,_0x3526db),_0x57becc=Math[_0x5e575c(0x1af)](_0x57becc,_0x3526db),_0x54a7d8=Math['min'](_0x54a7d8,_0x3526db);const _0x188e27=((-0xbc4+-0xd5b+0x191f+0.377)*_0x29a7df*_0x9d60cf/_0x4672c6)[_0x5e575c(0xfb)](0x6*-0x609+-0x1*-0x24a3+-0x6c),_0x337bf2=((0x11*0xa3+0x1e49*-0x1+0x1376+0.377)*_0x57becc*_0x9d60cf/_0x3b6ebb)[_0x5e575c(0xfb)](0x1251+0x1b*0x161+-0x378b),_0x291406=((0x9*0x89+-0x2539+-0x88*-0x3d+0.377)*_0x54a7d8*_0x9d60cf/_0x494d32)['toFixed'](-0x1*0x5e+0x2400+-0x23a1);return{'speed1':_0x188e27,'speed2':_0x337bf2,'speed3':_0x291406};}function renderShiftSpeeds(){const _0x14a526=_0x539923,_0x2ae7e3=calculateShiftSpeeds();document[_0x14a526(0x107)]('shiftSpeed1')[_0x14a526(0x1a3)]=_0x14a526(0x199)+_0x2ae7e3[_0x14a526(0xbb)],document[_0x14a526(0x107)]('shiftSpeed2')[_0x14a526(0x1a3)]=_0x14a526(0x147)+_0x2ae7e3[_0x14a526(0x1a1)],document[_0x14a526(0x107)](_0x14a526(0xca))[_0x14a526(0x1a3)]=_0x14a526(0x163)+_0x2ae7e3[_0x14a526(0x1ae)],_0x2ae7e3['speed1']===_0x14a526(0xf0)&&('dsPTA'===_0x14a526(0x132)?_0x12fe64[_0x14a526(0x107)](_0x14a526(0xcc))['textContent']=_0x4cefac(_0x5c8399):document[_0x14a526(0x107)]('shiftSpeed1')[_0x14a526(0x1c4)]=_0x14a526(0x166)),_0x2ae7e3['speed2']===_0x14a526(0xf0)&&(document['getElementById'](_0x14a526(0x98))[_0x14a526(0x1c4)]=_0x14a526(0x9a)),_0x2ae7e3['speed3']===_0x14a526(0xf0)&&(document['getElementById'](_0x14a526(0xca))[_0x14a526(0x1c4)]=_0x14a526(0xd7));}function drawVTChart(){const _0x21ae46=_0x539923;calculateVTWithRK4();const _0x4e47db=document[_0x21ae46(0x107)](_0x21ae46(0x140))[_0x21ae46(0x8d)]('2d'),_0x4ad973=parseFloat(document[_0x21ae46(0x107)]('kpiVmax')[_0x21ae46(0x1c4)])||-0x6a4*0x2+-0x4f8*-0x3+-0x13c,_0x8bf94c=_0x4ad973<=0x1fea+0x6c0+-0x45*0x8e?_0x4ad973:0x49a+-0x1*0xa7b+-0x141*-0x5,_0x3b1941=Array[_0x21ae46(0x1a4)]({'length':_0x8bf94c/(-0x18*0x75+0x31*-0x8b+0x259d)+(-0x5*0x95+0x31d*0x3+-0x66d)},(_0x17b461,_0x57bb29)=>_0x57bb29*(0xf3b+-0x1bd5+-0x652*-0x2));window['vtChartInstance']&&(_0x21ae46(0x12b)===_0x21ae46(0x1b3)?_0x4e72e7===_0x10da59?_0x591055[_0x21ae46(0x78)][_0x21ae46(0xef)](_0x21ae46(0x13c)):_0x9c2e42[_0x21ae46(0x78)][_0x21ae46(0x197)](_0x21ae46(0x13c)):window['vtChartInstance']['destroy']()),window[_0x21ae46(0xd2)]=new Chart(_0x4e47db,{'type':_0x21ae46(0x80),'data':{'labels':vtData[_0x21ae46(0x10e)],'datasets':[{'label':_0x21ae46(0x173),'data':vtData[_0x21ae46(0x6c)],'borderColor':_0x21ae46(0x93),'backgroundColor':_0x21ae46(0x153),'borderWidth':0x2,'pointRadius':0x0,'tension':0.2,'fill':!![]}]},'options':{'responsive':!![],'maintainAspectRatio':![],'scales':{'x':{'type':_0x21ae46(0xd5),'title':{'display':!![],'text':_0x21ae46(0x15e)},'min':0x0,'max':0xc8,'ticks':{'stepSize':0xa,'maxTicksLimit':0xa,'callback':function(_0x7ddf8e){const _0x3baec8=_0x21ae46;if(_0x3baec8(0x74)===_0x3baec8(0x74))return Math['round'](_0x7ddf8e);else _0x48e801['classList'][_0x3baec8(0xef)](_0x3baec8(0x13c));}},'grid':{'stepSize':0xa}},'y':{'title':{'display':!![],'text':_0x21ae46(0x190)},'min':0x0,'max':0xc8,'ticks':{'stepSize':0xa,'callback':function(_0x47b7f4){const _0xe6d171=_0x21ae46;if('nrmzX'===_0xe6d171(0x19a))return _0x47b7f4%(0x6a1*0x2+-0x1fdb+0x12a3)===0x1f78+-0x1343*0x1+-0xc35?_0x47b7f4:'';else _0x3cfc55[_0xe6d171(0x9b)]=_0x2df19c;}}}},'plugins':{'legend':{'display':!![],'position':'top'},'tooltip':{'callbacks':{'label':function(_0x58dbc9){const _0x4827f9=_0x21ae46,_0x4a8b2c=_0x58dbc9[_0x4827f9(0x103)]['x']['toFixed'](0x71*0x4d+0x313*0x2+-0x2822),_0x166992=_0x58dbc9[_0x4827f9(0x103)]['y']['toFixed'](-0x61*0x8+0xd*-0x61+0xc*0xaa);return'时间:\x20'+_0x4a8b2c+_0x4827f9(0x91)+_0x166992+_0x4827f9(0x18f);}}}},'animation':{'duration':0x1f4}}});}document[_0x539923(0x180)](_0x539923(0x183))[_0x539923(0x1b9)](_0x358130=>{const _0x15572b=_0x539923;_0x358130['addEventListener'](_0x15572b(0x127),function(){const _0x1238aa=_0x15572b,_0x389484=this[_0x1238aa(0x9b)]===_0x1238aa(0x10f);document[_0x1238aa(0x107)](_0x1238aa(0xd4))[_0x1238aa(0x73)]=!_0x389484,document['getElementById'](_0x1238aa(0xfe))[_0x1238aa(0x73)]=!_0x389484,document[_0x1238aa(0x107)](_0x1238aa(0x11b))['disabled']=!_0x389484;if(_0x389484){if(_0x1238aa(0x15c)===_0x1238aa(0x15c)){const _0x3848b5=parseFloat(document[_0x1238aa(0x107)](_0x1238aa(0x71))['value']);document[_0x1238aa(0x107)](_0x1238aa(0xd4))['value']=document[_0x1238aa(0x107)](_0x1238aa(0xd4))[_0x1238aa(0x9b)]||_0x3848b5,document['getElementById'](_0x1238aa(0xfe))[_0x1238aa(0x9b)]=document['getElementById']('shiftRPM2')[_0x1238aa(0x9b)]||_0x3848b5,document[_0x1238aa(0x107)](_0x1238aa(0x11b))[_0x1238aa(0x9b)]=document[_0x1238aa(0x107)](_0x1238aa(0x11b))[_0x1238aa(0x9b)]||_0x3848b5;}else _0x44cf98[_0x1238aa(0x1a3)]=_0x1238aa(0x14f);}drawVTChart();});}),[_0x539923(0xd4),_0x539923(0xfe),_0x539923(0x11b)]['forEach'](_0x57c122=>{const _0x3ccbc6=_0x539923,_0x4ef2f5=document['getElementById'](_0x57c122);if(!_0x4ef2f5)return;_0x4ef2f5[_0x3ccbc6(0xf3)](_0x3ccbc6(0xc2),function(_0x46bd39){const _0x3e68f9=_0x3ccbc6;_0x3e68f9(0x194)!=='sZlwx'?_0x170fd4>_0x1de041&&(_0x26e60f=_0x31303d,_0x3e0193=_0x5d970e):(_0x46bd39[_0x3e68f9(0x1cd)]===-0x17b1*0x1+-0x1df*-0x7+0xaa5||_0x46bd39[_0x3e68f9(0x171)]==='Enter')&&(_0x46bd39[_0x3e68f9(0x101)](),drawVTChart());});});function getAccelerationTime(_0x24c0cd){const _0x193a40=_0x539923,{time:_0x4a5f07,speed:_0x594960}=vtData;for(let _0x3009d0=-0x3*-0x1c3+-0x155b+0x1012;_0x3009d0<_0x594960[_0x193a40(0xcf)];_0x3009d0++){if(_0x594960[_0x3009d0]>=_0x24c0cd){if(_0x193a40(0xe8)!==_0x193a40(0xe8)){let _0x2dd37a=null;return function(..._0x331ba6){if(_0x2dd37a)_0x528469(_0x2dd37a);_0x2dd37a=_0x26bb83(()=>{const _0x32c597=_0x4790;_0x249ffe[_0x32c597(0x128)](this,_0x331ba6),_0x2dd37a=null;},_0x825624);};}else return _0x4a5f07[_0x3009d0]['toFixed'](-0x1bcf*0x1+0x1*0x14cf+-0xb*-0xa3);}}return'—';}document[_0x539923(0x107)](_0x539923(0x1b0))['addEventListener'](_0x539923(0x127),function(){const _0xed552b=_0x539923,_0x496ab4=parseFloat(this[_0xed552b(0x9b)]);if(!isNaN(_0x496ab4)&&_0x496ab4>-0xa*-0x1eb+-0x30*0x4e+-0x2*0x247){const _0x2b225a=getAccelerationTime(_0x496ab4);document[_0xed552b(0x107)](_0xed552b(0xcc))[_0xed552b(0x1c4)]=_0x2b225a;}else document[_0xed552b(0x107)]('accelerationTime')['textContent']='—';}),window['addEventListener'](_0x539923(0x1ca),()=>{const _0x1e35c9=_0x539923;setTimeout(updateShiftPoints,-0x1fa7+-0x1d4b+-0x3e1e*-0x1),setTimeout(()=>{const _0x50a55f=_0x4790;document['querySelectorAll'](_0x50a55f(0x183))['forEach'](_0x33d86d=>_0x33d86d['addEventListener'](_0x50a55f(0x127),updateShiftControls)),[_0x50a55f(0xd4),'shiftRPM2',_0x50a55f(0x11b)][_0x50a55f(0x1b9)](_0x429066=>document['getElementById'](_0x429066)?.[_0x50a55f(0xf3)](_0x50a55f(0x106),compute)),updateShiftControls();},-0x1fcf+0x8*-0x2a6+0x36f3);const _0x4034ba=document[_0x1e35c9(0x107)]('input_n');_0x4034ba&&_0x4034ba[_0x1e35c9(0xf3)]('change',()=>{const _0x5e1c19=_0x1e35c9;validateInput(_0x5e1c19(0x71),0x23a2+0x1ea6+0x38*-0x12f,-0x53b3+0x4d8a+0x4c79);});}),window[_0x539923(0xf3)]('load',()=>{const _0x5020f8=_0x539923;initCharts(),drawVTChart();const _0x26b729=document[_0x5020f8(0x180)](_0x5020f8(0x16e)),_0x537474=document[_0x5020f8(0x180)](_0x5020f8(0x131));_0x26b729[_0x5020f8(0x1b9)](_0x1f187b=>{const _0x26fe31=_0x5020f8;if(_0x26fe31(0x109)!=='Tvslj')_0x1f187b[_0x26fe31(0xf3)]('click',()=>{const _0x467c53=_0x26fe31;if(_0x467c53(0xc8)!==_0x467c53(0xc8))_0x50a346();else{_0x26b729[_0x467c53(0x1b9)](_0x34f14e=>_0x34f14e[_0x467c53(0x78)][_0x467c53(0x197)](_0x467c53(0x13c))),_0x1f187b[_0x467c53(0x78)][_0x467c53(0xef)](_0x467c53(0x13c));const _0x10d75e=_0x1f187b[_0x467c53(0x112)](_0x467c53(0x139));_0x537474[_0x467c53(0x1b9)](_0x2c4dda=>{const _0x3069ad=_0x467c53;_0x2c4dda[_0x3069ad(0x78)][_0x3069ad(0x197)](_0x3069ad(0x13c)),_0x2c4dda[_0x3069ad(0x78)][_0x3069ad(0xef)](_0x3069ad(0x16c));}),document['getElementById'](_0x10d75e+_0x467c53(0x1a0))['classList'][_0x467c53(0xef)](_0x467c53(0x13c)),document[_0x467c53(0x107)](_0x10d75e+_0x467c53(0x1a0))[_0x467c53(0x78)]['remove'](_0x467c53(0x16c));}});else return _0x28d218%(-0x2386+-0x1*0x1e67+0x41f7)===0x15ec+-0x1ff8+-0x283*-0x4?_0x4188e5:'';});});function compute(){const _0x490827=_0x539923;initCharts(),drawVTChart(),renderShiftSpeeds();const _0x15cac3=parseFloat(document[_0x490827(0x107)]('targetSpeedInput')[_0x490827(0x9b)]);!isNaN(_0x15cac3)&&_0x15cac3>-0x2*0xb95+0x2*0x1205+-0xce0&&(document[_0x490827(0x107)](_0x490827(0xcc))['textContent']=getAccelerationTime(_0x15cac3));}const CONFIG_STORAGE_KEY=_0x539923(0x135),DEFAULT_CONFIG_NAME='初始参数配置';function getDefaultConfig(){const _0x308aec=_0x539923;return{'name':DEFAULT_CONFIG_NAME,'params':{'m':parseFloat(document[_0x308aec(0x107)]('m')[_0x308aec(0x9b)]),'cd':parseFloat(document[_0x308aec(0x107)]('cd')[_0x308aec(0x9b)]),'rho':parseFloat(document[_0x308aec(0x107)](_0x308aec(0x13e))[_0x308aec(0x9b)]),'A':parseFloat(document[_0x308aec(0x107)]('A')[_0x308aec(0x9b)]),'cr':parseFloat(document[_0x308aec(0x107)]('cr')['value']),'mu':parseFloat(document[_0x308aec(0x107)]('mu')[_0x308aec(0x9b)]),'L':parseFloat(document[_0x308aec(0x107)]('L')['value']),'delta':parseFloat(document['getElementById'](_0x308aec(0x96))[_0x308aec(0x9b)]),'rd':parseFloat(document[_0x308aec(0x107)]('rd')[_0x308aec(0x9b)]),'slope':parseFloat(document[_0x308aec(0x107)]('slope')[_0x308aec(0x9b)]),'TratedPower':parseFloat(document['getElementById'](_0x308aec(0x148))[_0x308aec(0x9b)]),'TpeakPower':parseFloat(document[_0x308aec(0x107)](_0x308aec(0x187))[_0x308aec(0x9b)]),'TratedTorque':parseFloat(document[_0x308aec(0x107)](_0x308aec(0x198))[_0x308aec(0x9b)]),'TpeakTorque':parseFloat(document[_0x308aec(0x107)]('TpeakTorque')[_0x308aec(0x9b)]),'FratedPower':parseFloat(document['getElementById'](_0x308aec(0xce))[_0x308aec(0x9b)]),'FpeakPower':parseFloat(document['getElementById'](_0x308aec(0x117))[_0x308aec(0x9b)]),'FratedTorque':parseFloat(document[_0x308aec(0x107)](_0x308aec(0x138))[_0x308aec(0x9b)]),'FpeakTorque':parseFloat(document[_0x308aec(0x107)](_0x308aec(0xbc))[_0x308aec(0x9b)]),'nmax':parseFloat(document[_0x308aec(0x107)](_0x308aec(0x71))['value']),'i1':parseFloat(document[_0x308aec(0x107)]('i1')[_0x308aec(0x9b)]),'i2':parseFloat(document[_0x308aec(0x107)]('i2')[_0x308aec(0x9b)]),'i3':parseFloat(document[_0x308aec(0x107)]('i3')[_0x308aec(0x9b)]),'i4':parseFloat(document['getElementById']('i4')[_0x308aec(0x9b)]),'etaMotorSys':parseFloat(document['getElementById'](_0x308aec(0x161))[_0x308aec(0x9b)]),'etaGear1':parseFloat(document[_0x308aec(0x107)]('etaGear1')[_0x308aec(0x9b)]),'etaGear2':parseFloat(document[_0x308aec(0x107)]('etaGear2')[_0x308aec(0x9b)]),'etaGear3':parseFloat(document[_0x308aec(0x107)](_0x308aec(0x18d))['value']),'etaGear4':parseFloat(document[_0x308aec(0x107)]('etaGear4')[_0x308aec(0x9b)])},'id':Date[_0x308aec(0xcb)]()[_0x308aec(0x196)]()};}function getConfigArchive(){const _0x560a3c=localStorage['getItem'](CONFIG_STORAGE_KEY);if(!_0x560a3c){const _0x4c1e86=getDefaultConfig();return saveConfigArchive([_0x4c1e86]),[_0x4c1e86];}return JSON['parse'](_0x560a3c);}function saveConfigArchive(_0x521cc8){const _0x54962f=_0x539923;localStorage[_0x54962f(0x1ac)](CONFIG_STORAGE_KEY,JSON['stringify'](_0x521cc8));}function getCurrentPageParams(){const _0x101f5c=_0x539923;return{'m':parseFloat(document[_0x101f5c(0x107)]('m')[_0x101f5c(0x9b)]),'cd':parseFloat(document['getElementById']('cd')['value']),'rho':parseFloat(document['getElementById'](_0x101f5c(0x13e))[_0x101f5c(0x9b)]),'A':parseFloat(document[_0x101f5c(0x107)]('A')[_0x101f5c(0x9b)]),'cr':parseFloat(document['getElementById']('cr')['value']),'mu':parseFloat(document[_0x101f5c(0x107)]('mu')[_0x101f5c(0x9b)]),'L':parseFloat(document[_0x101f5c(0x107)]('L')['value']),'delta':parseFloat(document['getElementById'](_0x101f5c(0x96))[_0x101f5c(0x9b)]),'rd':parseFloat(document[_0x101f5c(0x107)]('rd')[_0x101f5c(0x9b)]),'slope':parseFloat(document['getElementById']('slope')['value']),'TratedPower':parseFloat(document[_0x101f5c(0x107)](_0x101f5c(0x148))['value']),'TpeakPower':parseFloat(document[_0x101f5c(0x107)]('TpeakPower')[_0x101f5c(0x9b)]),'TratedTorque':parseFloat(document[_0x101f5c(0x107)](_0x101f5c(0x198))[_0x101f5c(0x9b)]),'TpeakTorque':parseFloat(document['getElementById'](_0x101f5c(0x188))[_0x101f5c(0x9b)]),'FratedPower':parseFloat(document[_0x101f5c(0x107)]('FratedPower')[_0x101f5c(0x9b)]),'FpeakPower':parseFloat(document[_0x101f5c(0x107)](_0x101f5c(0x117))['value']),'FratedTorque':parseFloat(document[_0x101f5c(0x107)]('FratedTorque')[_0x101f5c(0x9b)]),'FpeakTorque':parseFloat(document[_0x101f5c(0x107)](_0x101f5c(0xbc))[_0x101f5c(0x9b)]),'nmax':parseFloat(document[_0x101f5c(0x107)]('nmax')[_0x101f5c(0x9b)]),'i1':parseFloat(document[_0x101f5c(0x107)]('i1')[_0x101f5c(0x9b)]),'i2':parseFloat(document[_0x101f5c(0x107)]('i2')['value']),'i3':parseFloat(document[_0x101f5c(0x107)]('i3')[_0x101f5c(0x9b)]),'i4':parseFloat(document[_0x101f5c(0x107)]('i4')[_0x101f5c(0x9b)]),'etaMotorSys':parseFloat(document[_0x101f5c(0x107)](_0x101f5c(0x161))[_0x101f5c(0x9b)]),'etaGear1':parseFloat(document['getElementById'](_0x101f5c(0x120))[_0x101f5c(0x9b)]),'etaGear2':parseFloat(document[_0x101f5c(0x107)]('etaGear2')['value']),'etaGear3':parseFloat(document[_0x101f5c(0x107)](_0x101f5c(0x18d))[_0x101f5c(0x9b)]),'etaGear4':parseFloat(document['getElementById']('etaGear4')[_0x101f5c(0x9b)]),'shiftMode':document[_0x101f5c(0x12f)](_0x101f5c(0x174))?.['value']||_0x101f5c(0x126),'shiftRPM1':parseFloat(document[_0x101f5c(0x107)]('shiftRPM1')[_0x101f5c(0x9b)])||Math[_0x101f5c(0x1b5)](parseFloat(document[_0x101f5c(0x107)]('nmax')[_0x101f5c(0x9b)])/(0x14c*-0x13+-0x6a2+0x1f78))*(-0x65b+0x2400+0x9d1*-0x3),'shiftRPM2':parseFloat(document[_0x101f5c(0x107)]('shiftRPM2')['value'])||Math[_0x101f5c(0x1b5)](parseFloat(document[_0x101f5c(0x107)](_0x101f5c(0x71))['value'])/(-0x11*-0x173+-0x8cd+-0x5b*0x2c))*(0x7*-0x377+0x86f+0x19a*0xa),'shiftRPM3':parseFloat(document[_0x101f5c(0x107)](_0x101f5c(0x11b))[_0x101f5c(0x9b)])||Math['round'](parseFloat(document['getElementById'](_0x101f5c(0x71))[_0x101f5c(0x9b)])/(-0x1d37+-0x1612+-0x1129*-0x3))*(0xa6*0x3b+0xdac+-0x33bc)};}window['addEventListener']('load',function(){const _0x3949ea=_0x539923;setTimeout(renderConfigCards,0x260a+-0x91*-0x13+-0x2e75),document['addEventListener'](_0x3949ea(0x122),function(_0x4348cd){const _0x34cd1a=_0x3949ea,_0x35b4c5=document[_0x34cd1a(0x180)](_0x34cd1a(0xf8)),_0x31814d=_0x4348cd[_0x34cd1a(0x18c)],_0x18f47b=!Array[_0x34cd1a(0x1a4)](_0x35b4c5)[_0x34cd1a(0xa1)](_0x10b7e3=>_0x10b7e3[_0x34cd1a(0x170)](_0x31814d));if(_0x18f47b)_0x34cd1a(0xc7)===_0x34cd1a(0xc7)?_0x35b4c5[_0x34cd1a(0x1b9)](_0x9c79f8=>_0x9c79f8['classList'][_0x34cd1a(0x197)]('active')):_0xee9eef[_0x34cd1a(0x1ac)](_0x19f481,_0x26738f[_0x34cd1a(0x156)](_0x59dbad));else{if('qOgib'===_0x34cd1a(0x11f))_0x52603c=!![];else{const _0x7c3b2a=_0x31814d['closest'](_0x34cd1a(0xf8))&&!_0x31814d[_0x34cd1a(0x1a9)]('.config-input')&&!_0x31814d[_0x34cd1a(0x1a9)](_0x34cd1a(0x113));if(_0x7c3b2a){const _0x4d92d7=_0x31814d[_0x34cd1a(0x1a9)](_0x34cd1a(0xf8));_0x35b4c5['forEach'](_0x37c8d2=>{const _0x281de5=_0x34cd1a;_0x37c8d2===_0x4d92d7?_0x37c8d2[_0x281de5(0x78)][_0x281de5(0xef)](_0x281de5(0x13c)):_0x281de5(0x83)===_0x281de5(0x142)?(_0x218c17[_0x281de5(0x180)](_0x281de5(0xf8))[_0x281de5(0x1b9)](_0x50bb24=>_0x50bb24['classList'][_0x281de5(0x197)](_0x281de5(0x13c))),_0x505b2b['classList'][_0x281de5(0xef)](_0x281de5(0x13c))):_0x37c8d2['classList'][_0x281de5(0x197)](_0x281de5(0x13c));});}}}});});function renderConfigCards(){const _0x1c2521=_0x539923,_0x2a4c53=getConfigArchive(),_0x55fd90=document['querySelector'](_0x1c2521(0x6d));if(!_0x55fd90)return;_0x55fd90[_0x1c2521(0x1a3)]='',_0x2a4c53[_0x1c2521(0x1b9)]((_0x511349,_0x1576af)=>{const _0x2bdc08=_0x1c2521,_0x3e97fb=document['createElement']('div');_0x3e97fb[_0x2bdc08(0xc3)]=_0x2bdc08(0x9d),_0x3e97fb['dataset']['id']=_0x511349['id'],_0x3e97fb['dataset'][_0x2bdc08(0x82)]=_0x1576af,_0x3e97fb[_0x2bdc08(0x1a3)]=_0x2bdc08(0x144)+_0x511349[_0x2bdc08(0x152)]+'\x22\x20placeholder=\x22请输入配置名称\x22>\x0a\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20<div\x20class=\x22space-y-2\x20text-sm\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22flex\x20justify-between\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22text-ink/70\x22>计算质量\x20(kg)：</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22font-mono\x20text-neonCyan\x22>'+_0x511349[_0x2bdc08(0x1ba)]['m']['toLocaleString']()+_0x2bdc08(0x16f)+_0x511349['params']['cd']['toFixed'](0x78a+-0x1*0x1153+0x9cc)+_0x2bdc08(0xb8)+_0x511349['params'][_0x2bdc08(0x13e)][_0x2bdc08(0xfb)](-0x6f9+0x13*0xf+0x5df)+'</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22flex\x20justify-between\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22text-ink/70\x22>迎风面积\x20(m²)：</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22font-mono\x20text-neonCyan\x22>'+_0x511349[_0x2bdc08(0x1ba)]['A'][_0x2bdc08(0xfb)](-0x1*0xc11+-0xa*0xde+0x14be)+'</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22flex\x20justify-between\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22text-ink/70\x22>滚阻系数\x20f：</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22font-mono\x20text-neonCyan\x22>'+_0x511349[_0x2bdc08(0x1ba)]['cr'][_0x2bdc08(0xfb)](-0xb*-0x1c1+-0x2b*-0x2b+-0x1a80)+'</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22flex\x20justify-between\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22text-ink/70\x22>电机总峰值功率\x20(kW)：</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22font-mono\x20text-neonPink\x22>'+(_0x511349[_0x2bdc08(0x1ba)][_0x2bdc08(0x187)]+_0x511349[_0x2bdc08(0x1ba)][_0x2bdc08(0x117)])[_0x2bdc08(0x125)]()+_0x2bdc08(0xb6),_0x55fd90[_0x2bdc08(0x17a)](_0x3e97fb);const _0x52f43e=_0x3e97fb[_0x2bdc08(0x12f)]('.config-name');_0x52f43e['addEventListener']('blur',function(){const _0x3ede6a=_0x2bdc08,_0x2b7880=this[_0x3ede6a(0x9b)]['trim']()||'配置'+(_0x1576af+(-0x1e43+-0x1*0xddb+-0xfb*-0x2d));_0x2a4c53[_0x1576af][_0x3ede6a(0x152)]=_0x2b7880,saveConfigArchive(_0x2a4c53),this[_0x3ede6a(0x9b)]=_0x2b7880;});const _0xbb2210=_0x3e97fb[_0x2bdc08(0x12f)]('.apply-config-btn');_0xbb2210[_0x2bdc08(0xf3)](_0x2bdc08(0x122),function(){const _0x17bc8d=_0x2bdc08;if(_0x17bc8d(0xd9)==='hvufu')applyConfigToPage(_0x511349[_0x17bc8d(0x1ba)]),document[_0x17bc8d(0x180)](_0x17bc8d(0xf8))[_0x17bc8d(0x1b9)](_0x16efaf=>_0x16efaf[_0x17bc8d(0x78)][_0x17bc8d(0x197)](_0x17bc8d(0x13c))),_0x3e97fb['classList'][_0x17bc8d(0xef)](_0x17bc8d(0x13c));else return _0x4fc5ce[_0x17bc8d(0x101)](),![];});});}function _0x5804(){const _0x289639=['\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22text-neonCyan\x20font-bold\x20text-1xl\x22>','.config-card','峰值扭矩\x20(Nm)','none','toFixed','NxIUv','left','shiftRPM2','#666','LhwoT','preventDefault','pow','parsed','dWFqi','VjJGV','input','getElementById','mPUSJ','BNnGo','MLrMi','not-allowed','0\x200\x2020px\x20rgba(0,0,0,0.5)','hAxNA','time','manual','请先选中要删除的配置！','2挡轮端扭矩','getAttribute','.apply-config-btn','backgroundColor','sin','display','FpeakPower','ratedT','boxShadow','yySce','shiftRPM3','剩余尝试次数：','挡）</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20','peakT','iMFue','etaGear1','ctrlKey','click','blur','OZQhb','toLocaleString','auto','change','apply','kpiMotorRPM','splice','vbBaO','zIndex','gKdhx','boWNJ','querySelector','ratedPower','.tab-content','sPqbU','ZreLX','kHngy','dfcv_config_archive','1挡轮端扭矩','body','FratedTorque','data-tab','新配置已成功保存！','href','active','flex','rho','uuJnf','vtChart','#043d1c','uTnFB','isLocked','\x0a\x20\x20\x20\x20\x20\x20<div\x20class=\x22mb-3\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<input\x20type=\x22text\x22\x20class=\x22config-input\x20config-name\x22\x20value=\x22','1034708fhCWxr','GAZSJ','<span\x20class=\x22text-xs\x20text-ink/70\x20mr-2\x22>2→3挡：</span>','TratedPower','扭矩\x20(Nm)','step','abs','PXodC','#FF3D81','peakPower','<span\x20class=\x22text-green-600\x20font-bold\x20text-3xl\x22>否</span>','qTEvy','push','name','rgba(50,\x20230,\x20226,\x200.1)','#F5D300','12%','stringify','selectstart','#999999','kxKtX','input[value=\x22auto\x22]','327IylLHa','giuxA','nvMje','时间\x20(s)','zDsMP','1071516SokMgy','etaMotorSys','dispatchEvent','<span\x20class=\x22text-xs\x20text-ink/70\x20mr-2\x22>3→4挡：</span>','onclick','kpiVmax','1→2挡：—','ab_slider','DOMContentLoaded','BXRHS','atan','fixed','hidden','peakTorque','.tab-btn','</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22flex\x20justify-between\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22text-ink/70\x22>空气阻力系数\x20Cd：</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22font-mono\x20text-neonCyan\x22>','contains','key','dfcv2025','车速-时间曲线\x20(km/h)','input[name=\x22shiftMode\x22]:checked','get','translate(-50%,\x20-50%)','8PmrYUT','2rem','Enter','appendChild','#b60040ca','CBeMd','FaEkW','true','createElement','querySelectorAll','color','contextmenu','input[name=\x22shiftMode\x22]','input_L','etaGear2','label','TpeakPower','TpeakTorque','passwordLockState','ufyuQ','7879865YLPDQt','target','etaGear3','ratedTorque','\x20km/h','车速\x20(km/h)','ZdTrx','attemptsLeft','cos','sZlwx','\x0a\x20\x20\x20\x20\x20\x20\x20\x20<h3\x20style=\x22color:\x20#D92121;\x20margin-top:\x200;\x22>检测到开发者工具开启</h3>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<p>页面已隐藏以保护内容安全</p>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<p>请关闭开发者工具重新访问</p>\x0a\x20\x20\x20\x20\x20\x20','toString','remove','TratedTorque','<span\x20class=\x22text-xs\x20text-ink/70\x20mr-2\x22>1→2挡：</span>','nrmzX','zNskL','animation','totalMotorChart','#FFCA28','caZeQ','-tab','speed2','search','innerHTML','from','fontFamily','tDJUX','outerHeight','峰值功率\x20(kW)','closest','kWRhb','entries','setItem','countdown','speed3','min','targetSpeedInput','轮端峰值扭矩\x20(Nm)','kLoPt','nifPR','find','round','10px','shiftKey','#FF7A00','forEach','params','.config-card.active','slopeSpeed','profileEnd','shiftMode','totalWheelTorqueChart','29984mBrLmE','AMDQl','lockoutEndTime','自定义爬坡点','textContent','close','PkiyX','style','(((.+)+)+)+$','set','load','kpiFullTorqueSlip','转速\x20(rpm)','keyCode','4400082Czgkou','right','speed','#configArchiveContainer\x20.grid','Nbvay','cursor','hKQzp','nmax','location','disabled','NBind','5786055rcAZlU','passwordInput','peakP','classList','htZat','verifyPasswordBtn','transform','999999','input_','transparent','F10','line','DTMVh','index','lIVXR','KTbzl','content-unlocked','5jyAvwE','textAlign','MdJyG','VzDan','额定扭矩\x20(Nm)','altKey','CiCBQ','getContext','constructor','.config-card[data-id=\x22','checked','s,\x20车速:\x20','CfBBU','#32E6E2','head','配置已成功应用！','delta','trim','shiftSpeed2','F12','2→3挡：—','value','Arial,\x20sans-serif','config-card','input_a','slope','shiftSpeed1','some','#FF3333','sZukA','data','top','#FFFFFF','额定功率\x20(kW)','hAnTU','lockoutMessage','Cehal','input[name=\x22shiftMode\x22][value=\x22','getItem','input_b','shiftRPM4','parse','Rijzr','div','20%','passwordModal','destroy','EqOoV','</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20</div><div\x20class=\x22flex\x20justify-between\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22text-ink/70\x22>……</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20<div\x20class=\x22mt-4\x20flex\x20justify-end\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<button\x20class=\x22btn\x20btn-sm\x20bg-neonPurple/20\x20border-neonPurple\x20hover:bg-neonPurple/30\x20apply-config-btn\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<i\x20class=\x22fa\x20fa-check\x22></i>\x20应用此配置\x0a\x20\x20\x20\x20\x20\x20\x20\x20</button>\x0a\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20','确定要删除该配置吗？删除后无法恢复！','</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22flex\x20justify-between\x22>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22text-ink/70\x22>空气密度\x20(kg/m³)：</span>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<span\x20class=\x22font-mono\x20text-neonCyan\x22>','ceil','includes','speed1','FpeakTorque','8063394mPgURM','white','15%','HEapO','UDrHc','keydown','className','fsvym','</div>\x0a\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20<div\x20class=\x22text-[10px]\x20text-ink/50\x22>对应挡位为（','#000000','dpbDC','gjiso','配置已成功覆盖！','shiftSpeed3','now','accelerationTime','4挡轮端扭矩','FratedPower','length','ratedP','position','vtChartInstance','ebvot','shiftRPM1','linear','map','3→4挡：—','max','hvufu','功率\x20(kW)','20gQXzMT','motor2Chart','userModified','.config-card[data-index=\x22','wvcHe','borderRadius','delConfigBtn','FLrRR','bottom','dataset','#ffb300','rDNAz','motor1Chart','uQpja','3挡轮端扭矩','ZqDcH','circle','documentElement','outerWidth','MXZUn','add','0.0','平直道路阻力曲线','#84a2f7','addEventListener','errorModal','etaGear4','wiwEK'];_0x5804=function(){return _0x289639;};return _0x5804();}function applyConfigToPage(_0x518237){const _0x3248c0=_0x539923;for(const [_0x473b55,_0x5bd476]of Object[_0x3248c0(0x1ab)](_0x518237)){const _0x491776=document[_0x3248c0(0x107)](_0x473b55),_0x4457f0=document['getElementById'](_0x3248c0(0x7d)+_0x473b55);_0x491776&&_0x4457f0&&(_0x491776['value']=_0x5bd476,_0x4457f0[_0x3248c0(0x9b)]=_0x5bd476);}if(_0x518237[_0x3248c0(0x1be)]){const _0x28bb1f=document[_0x3248c0(0x12f)](_0x3248c0(0xab)+_0x518237[_0x3248c0(0x1be)]+'\x22]');if(_0x28bb1f){if(_0x3248c0(0x88)===_0x3248c0(0x81)){const _0x1caf84=_0x2a2bef[_0x3248c0(0x1b5)](_0x3edbdb/(0x64+-0x223e+0x4*0x883))*(-0x353*-0x9+-0xf43+-0xe76);_0x3f50be[_0x3248c0(0x9b)]=_0x1caf84;}else _0x28bb1f['checked']=!![],_0x28bb1f[_0x3248c0(0x162)](new Event('change'));}}const _0x5dec23=[_0x3248c0(0xd4),'shiftRPM2',_0x3248c0(0x11b)];_0x5dec23['forEach'](_0x1b45a2=>{const _0x2446c1=_0x3248c0;if(_0x2446c1(0xc1)!==_0x2446c1(0xc1))_0x26cf41();else{const _0x5a3ffa=document['getElementById'](_0x1b45a2);_0x5a3ffa&&(delete _0x5a3ffa[_0x2446c1(0xe4)][_0x2446c1(0xdd)],_0x518237[_0x1b45a2]&&(_0x5a3ffa['value']=_0x518237[_0x1b45a2],_0x518237[_0x2446c1(0x1be)]===_0x2446c1(0x10f)&&(_0x5a3ffa[_0x2446c1(0xe4)][_0x2446c1(0xdd)]=_0x2446c1(0x17e))));}});if(_0x518237['shiftRPM1'])document[_0x3248c0(0x107)]('shiftRPM1')[_0x3248c0(0x9b)]=_0x518237[_0x3248c0(0xd4)];if(_0x518237['shiftRPM2'])document[_0x3248c0(0x107)]('shiftRPM2')[_0x3248c0(0x9b)]=_0x518237[_0x3248c0(0xfe)];if(_0x518237['shiftRPM3'])document[_0x3248c0(0x107)](_0x3248c0(0x11b))[_0x3248c0(0x9b)]=_0x518237['shiftRPM3'];setTimeout(()=>{updateShiftMode(),updateShiftPoints();},0xb9a+0x49*-0x39+0x50b),updateABSlider(),compute(),renderShiftSpeeds();const _0x275457=parseFloat(document[_0x3248c0(0x107)]('targetSpeedInput')[_0x3248c0(0x9b)]);!isNaN(_0x275457)&&_0x275457>-0x24ea+0xff1+0x14f9&&(document[_0x3248c0(0x107)]('accelerationTime')[_0x3248c0(0x1c4)]=getAccelerationTime(_0x275457)),alert(_0x3248c0(0x95));}document[_0x539923(0x107)]('addConfigBtn')?.['addEventListener'](_0x539923(0x122),function(){const _0x29c536=_0x539923,_0x2fb7bb=getConfigArchive(),_0x213e55=document[_0x29c536(0x12f)](_0x29c536(0x1bb));if(_0x213e55){if(_0x29c536(0x104)!==_0x29c536(0x108)){const _0x29419b=confirm('是否覆盖所选配置？\x0a选择\x22确定\x22将覆盖当前选中的配置，选择\x22取消\x22将放弃保存操作。');if(_0x29419b){if(_0x29c536(0xaa)===_0x29c536(0xaa)){const _0x289baa=parseInt(_0x213e55[_0x29c536(0xe4)][_0x29c536(0x82)]);_0x2fb7bb[_0x289baa]={..._0x2fb7bb[_0x289baa],'name':_0x2fb7bb[_0x289baa][_0x29c536(0x152)],'params':getCurrentPageParams()},saveConfigArchive(_0x2fb7bb),renderConfigCards(),setTimeout(()=>{const _0x14d3f=_0x29c536;if('PXodC'!==_0x14d3f(0x14c)){const _0x5bba18=_0x3d5a88(_0x2ead44[_0x14d3f(0x9b)]),_0x2fc0ab=_0x58e4d9(_0x4d0d30[_0x14d3f(0x9b)]),_0x5c5ceb=_0x2fc0ab-_0x5bba18;_0x1bb972['value']=_0x396f73[_0x14d3f(0x1b5)](_0x5bba18),_0x3ba362[_0x14d3f(0x9b)]=_0x23e22b['round'](_0x5c5ceb),_0x7284d();}else{const _0x2560db=document['querySelector'](_0x14d3f(0xde)+_0x289baa+'\x22]');_0x2560db&&(document[_0x14d3f(0x180)](_0x14d3f(0xf8))[_0x14d3f(0x1b9)](_0x51ff54=>_0x51ff54[_0x14d3f(0x78)]['remove'](_0x14d3f(0x13c))),_0x2560db['classList'][_0x14d3f(0xef)](_0x14d3f(0x13c)));}},0x2197+0x9b9+-0x10c*0x29),alert(_0x29c536(0xc9));}else _0x59dbaf[_0x29c536(0x107)](_0x29c536(0x129))[_0x29c536(0x1c4)]='—';}else{if(_0x29c536(0xea)===_0x29c536(0xea))return;else{const _0x5b94fb=_0x466502(_0x220495[_0x29c536(0x107)](_0x29c536(0x71))[_0x29c536(0x9b)]);_0x4bfd6a['getElementById'](_0x29c536(0xd4))[_0x29c536(0x9b)]=_0x3f62a9[_0x29c536(0x107)](_0x29c536(0xd4))[_0x29c536(0x9b)]||_0x5b94fb,_0x55431b[_0x29c536(0x107)]('shiftRPM2')[_0x29c536(0x9b)]=_0x3882f8[_0x29c536(0x107)](_0x29c536(0xfe))[_0x29c536(0x9b)]||_0x5b94fb,_0xc518fe[_0x29c536(0x107)]('shiftRPM3')[_0x29c536(0x9b)]=_0x74f334[_0x29c536(0x107)](_0x29c536(0x11b))[_0x29c536(0x9b)]||_0x5b94fb;}}}else return _0x26e66e[_0x29c536(0x101)](),![];}else{const _0x7e525={'name':'新配置'+(_0x2fb7bb['length']+(-0xd31*-0x2+0x26a9*0x1+-0x410a)),'params':getCurrentPageParams(),'id':Date[_0x29c536(0xcb)]()[_0x29c536(0x196)]()};_0x2fb7bb[_0x29c536(0x151)](_0x7e525),saveConfigArchive(_0x2fb7bb),renderConfigCards();const _0x3c92fd=document['querySelector'](_0x29c536(0x8f)+_0x7e525['id']+'\x22]');_0x3c92fd&&(document[_0x29c536(0x180)](_0x29c536(0xf8))[_0x29c536(0x1b9)](_0x116c52=>_0x116c52[_0x29c536(0x78)][_0x29c536(0x197)]('active')),_0x3c92fd['classList']['add']('active')),alert(_0x29c536(0x13a));}}),document[_0x539923(0x107)](_0x539923(0xe1))?.[_0x539923(0xf3)](_0x539923(0x122),function(){const _0x5450cc=_0x539923,_0x3f4147=getConfigArchive();if(_0x3f4147[_0x5450cc(0xcf)]<=0x150+-0x20*0x107+0x1f91){if(_0x5450cc(0xdf)!==_0x5450cc(0xdf))_0x54aa48[_0x5450cc(0xf3)](_0x5450cc(0x122),()=>{const _0x5be033=_0x5450cc;_0x1b45bc[_0x5be033(0x1b9)](_0x48a85f=>_0x48a85f[_0x5be033(0x78)][_0x5be033(0x197)](_0x5be033(0x13c))),_0x35857c[_0x5be033(0x78)][_0x5be033(0xef)](_0x5be033(0x13c));const _0x1f9846=_0x55069e[_0x5be033(0x112)](_0x5be033(0x139));_0x4bdbef[_0x5be033(0x1b9)](_0x3a20f6=>{const _0x3ec072=_0x5be033;_0x3a20f6[_0x3ec072(0x78)][_0x3ec072(0x197)](_0x3ec072(0x13c)),_0x3a20f6[_0x3ec072(0x78)][_0x3ec072(0xef)](_0x3ec072(0x16c));}),_0x19ae2f['getElementById'](_0x1f9846+_0x5be033(0x1a0))[_0x5be033(0x78)]['add'](_0x5be033(0x13c)),_0x20c99d[_0x5be033(0x107)](_0x1f9846+'-tab')[_0x5be033(0x78)][_0x5be033(0x197)]('hidden');});else{alert('不能删除最后一个配置！');return;}}const _0x244ef5=document[_0x5450cc(0x12f)]('.config-card.active');if(!_0x244ef5){alert(_0x5450cc(0x110));return;}const _0x55a45f=confirm(_0x5450cc(0xb7));if(!_0x55a45f)return;const _0x4d9e5f=parseInt(_0x244ef5[_0x5450cc(0xe4)]['index']);_0x3f4147[_0x5450cc(0x12a)](_0x4d9e5f,0x471*0x2+-0x840+-0xa1),saveConfigArchive(_0x3f4147),renderConfigCards();}),window['addEventListener']('load',function(){setTimeout(renderConfigCards,-0x4*0x55c+0xd*-0x49+-0x1f*-0xe3);});
+</script>
+</body>
+</html>
